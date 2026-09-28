@@ -1,25 +1,82 @@
 {
   "expo": {
-    "name": "pickmi-driver",
+    "name": "Pickmi Driver",
     "slug": "pickmi-driver",
+    "owner": "karthik761346",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/driver_icon.png",
+    "scheme": "pickmidriver",
     "userInterfaceStyle": "light",
+    "primaryColor": "#0043DC",
+    "splash": {
+      "image": "./assets/pickmi_logo.png",
+      "backgroundColor": "#0043DC",
+      "resizeMode": "contain"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.pickmi.driver",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "PickMi Driver requires your location to display pickup and drop-off navigation routes."
+      }
     },
     "android": {
+      "package": "com.pickmi.driver",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#0043DC",
+        "foregroundImage": "./assets/driver_icon_foreground.png"
       },
-      "predictiveBackGestureEnabled": false
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS",
+        "VIBRATE",
+        "SYSTEM_ALERT_WINDOW",
+        "USE_FULL_SCREEN_INTENT",
+        "FOREGROUND_SERVICE"
+      ],
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "*.pickmi.com",
+              "pathPrefix": "/driver"
+            },
+            {
+              "scheme": "pickmidriver"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/driver_icon.png",
+          "color": "#0043DC",
+          "sounds": []
+        }
+      ]
+    ],
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/driver_icon.png",
+      "bundler": "metro"
+    },
+    "newArchEnabled": false,
+    "extra": {
+      "eas": {
+        "projectId": "13fe6dc0-ca34-419b-9d8c-de3b788bdcb0"
+      }
     }
   }
 }
