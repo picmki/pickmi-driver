@@ -79,7 +79,9 @@
     "extra": {
       "eas": {
         "projectId": "13fe6dc0-ca34-419b-9d8c-de3b788bdcb0"
-      }
+      },
+      "supabaseUrl": "https://awwrbgwpzgtbunrvsmyu.supabase.co",
+      "supabaseAnonKey": "sb_publishable_MVv7fXTjS6R79oXLOHuCLA_ij0lDSRE"
     }
   }
 }
