@@ -243,11 +243,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 14,
     marginBottom: 10,
-    shadowColor: '#0C2340',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 4,
   },
   payBtnText: {
     fontSize: 15,

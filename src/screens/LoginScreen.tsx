@@ -15,14 +15,16 @@ import { Colors, Shadows } from '../theme/colors';
 import { PickMiButton } from '../components/common/PickMiButton';
 import { useAuth } from '../context/AuthContext';
 
+import { DarkLogoSvg } from '../components/common/DarkLogoSvg';
+
 interface LoginScreenProps {
   onContinue: () => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onContinue }) => {
   const { pendingMobile, sendOtp } = useAuth();
-  // Default to prompt's example +91 98765 43210
-  const [phoneNumber, setPhoneNumber] = useState('98765 43210');
+  // Start with empty mobile number so driver can type their own
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [countryCode, setCountryCode] = useState('+91');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -50,19 +52,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onContinue }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.inner}>
-          {/* Top Brand Element */}
+          {/* Top Brand Element - PickMi Dark Logo */}
           <View style={styles.topSection}>
-            <View style={styles.logoBadge}>
-              <Ionicons name="car-sport" size={28} color={Colors.white} />
-            </View>
-            <Text style={styles.brandTitle}>
-              Pick<Text style={styles.brandAccent}>Mi</Text>
-            </Text>
+            <DarkLogoSvg width={110} height={42} />
           </View>
 
           {/* Form Content */}
           <View style={styles.contentSection}>
-            <Text style={styles.title}>Welcome to PickMi</Text>
+            <Text style={styles.title}>Welcome to Pickmi</Text>
             <Text style={styles.subtitle}>
               Login to start managing your trips.
             </Text>
@@ -70,7 +67,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onContinue }) => {
             {/* Input Label */}
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Mobile Number</Text>
-              <View style={[styles.inputRow, Shadows.sm, errorMsg ? styles.inputError : null]}>
+              <View style={[styles.inputRow, errorMsg ? styles.inputError : null]}>
                 <View style={styles.countryCodeBox}>
                   <Text style={styles.flag}>🇮🇳</Text>
                   <Text style={styles.countryCodeText}>{countryCode}</Text>
@@ -113,7 +110,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onContinue }) => {
               rightIcon={<Ionicons name="arrow-forward" size={20} color={Colors.white} />}
             />
             <Text style={styles.termsText}>
-              By continuing, you agree to PickMi's{' '}
+              By continuing, you agree to Pickmi's{' '}
               <Text style={styles.termsLink}>Terms of Service</Text> &{' '}
               <Text style={styles.termsLink}>Privacy Policy</Text>.
             </Text>

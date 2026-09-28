@@ -560,11 +560,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 14,
     gap: 6,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   loadAmountBtnText: {
     fontSize: 14,

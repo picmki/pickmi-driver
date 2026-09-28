@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "PickMi Customer",
+    "slug": "pickmi-customer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "pickmicustomer",
+    "userInterfaceStyle": "light",
+    "primaryColor": "#0063F7",
+    "splash": {
+      "backgroundColor": "#0063F7",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.pickmi.customer"
+    },
+    "android": {
+      "package": "com.pickmi.customer",
+      "adaptiveIcon": {
+        "backgroundColor": "#0063F7",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "newArchEnabled": false
+  }
+}

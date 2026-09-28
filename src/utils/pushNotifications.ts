@@ -196,18 +196,33 @@ export async function registerForRemotePushNotificationsAsync(driverId?: string)
       (Constants.expoConfig?.extra as any)?.projectId ||
       '13fe6dc0-ca34-419b-9d8c-de3b788bdcb0';
 
-    // Fetch Expo push token — SDK 53+ requires { projectId }
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId,
-    }).catch((err) => {
-      console.warn(
-        '⚠️ getExpoPushTokenAsync failed. Common causes:\n' +
-        '  1. Running in Expo Go (requires development build for remote push)\n' +
-        '  2. Device network offline\n' +
-        'Error:', err?.message
-      );
+    // ⚠️ CRITICAL: Expo Go SDK 53+ removed remote Android push notifications from Expo Go.
+    // Calling getExpoPushTokenAsync inside Expo Go throws an explicit runtime exception.
+    // In standalone APK and development builds, native FCM is active and works properly.
+    const isExpoGo =
+      Constants.appOwnership === 'expo' ||
+      (Constants as any).executionEnvironment === 'storeClient';
+
+    if (isExpoGo) {
+      console.log('ℹ️ Running in Expo Go: Remote push token bypassed (requires standalone APK on Android SDK 53+). Local alerts are active.');
+      if (driverId) {
+        const mockExpoGoToken = `ExponentPushToken[expo_go_${driverId.replace(/[^a-zA-Z0-9]/g, '').substring(0, 15)}]`;
+        const { updateDriverPushTokenInSupabase } = require('../services/supabaseService');
+        await updateDriverPushTokenInSupabase(driverId, mockExpoGoToken).catch(() => {});
+      }
       return null;
-    });
+    }
+
+    // Standalone APK / Development build: Fetch real native Expo/FCM push token
+    let tokenData = null;
+    try {
+      tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId,
+      });
+    } catch (err: any) {
+      console.warn('⚠️ getExpoPushTokenAsync failed:', err?.message);
+      return null;
+    }
 
     const token = tokenData?.data;
     if (token) {

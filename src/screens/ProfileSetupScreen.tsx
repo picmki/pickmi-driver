@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Colors, Shadows } from '../theme/colors';
+import { Colors } from '../theme/colors';
 import { PickMiButton } from '../components/common/PickMiButton';
 import { PickMiDatePickerModal } from '../components/common/PickMiDatePickerModal';
 import { playOnlineSound } from '../utils/soundEffects';
@@ -51,7 +51,13 @@ const SAMPLE_INSURANCE =
 const SAMPLE_PERMIT =
   'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=600&q=80';
 
-const VEHICLE_TYPES: VehicleType[] = ['Sedan', 'SUV', 'Hatchback', 'Prime Sedan', 'EV'];
+const VEHICLE_TYPES: { type: VehicleType; icon: any }[] = [
+  { type: 'Sedan', icon: 'car' },
+  { type: 'SUV', icon: 'car-sport' },
+  { type: 'Hatchback', icon: 'car-outline' },
+  { type: 'Prime Sedan', icon: 'ribbon' },
+  { type: 'EV', icon: 'flash' },
+];
 
 export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComplete }) => {
   const {
@@ -66,7 +72,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
   // Current onboarding stage
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('PROFILE');
 
-  // ─── Step 0: Profile Info (Empty by default) ───────────────────────────────
+  // ─── Step 0: Profile Info ──────────────────────────────────────────────────
   const [name, setName] = useState(driver.name || '');
   const [driverMobile, setDriverMobile] = useState(pendingMobile || driver.mobile || '');
   const [gender, setGender] = useState<Gender>('Male');
@@ -74,7 +80,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
   const [nameError, setNameError] = useState('');
   const [genderError, setGenderError] = useState('');
 
-  // ─── Step 1: Driver License Details (Front & Back - Empty by default) ──────
+  // ─── Step 1: Driver License Details (Front & Back) ─────────────────────────
   const [dlNumber, setDlNumber] = useState('');
   const [dlValidUntil, setDlValidUntil] = useState('');
   const [dlFrontPhotoUri, setDlFrontPhotoUri] = useState<string | null>(null);
@@ -82,7 +88,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
   const [dlError, setDlError] = useState('');
   const [dlValidError, setDlValidError] = useState('');
 
-  // ─── Step 2: Vehicle & Documents (Empty by default) ────────────────────────
+  // ─── Step 2: Vehicle & Documents ───────────────────────────────────────────
   const [vehicleType, setVehicleType] = useState<VehicleType>('Sedan');
   const [vehicleModel, setVehicleModel] = useState('');
   const [vehicleNumber, setVehicleNumber] = useState('');
@@ -100,17 +106,16 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
   const [vehicleModelError, setVehicleModelError] = useState('');
   const [vehicleNumberError, setVehicleNumberError] = useState('');
 
-  // ─── Interactive Date Picker Modal State ─────────────────────────────────
+  // ─── Interactive Date Picker Modal State ───────────────────────────────────
   const [datePickerTarget, setDatePickerTarget] = useState<
     'DL' | 'RC_FC' | 'INSURANCE' | 'PERMIT' | null
   >(null);
 
-  // ─── Account Created Success Popup Modal State ───────────────────────────
+  // ─── Account Created Success Popup Modal State ─────────────────────────────
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ─── Image Picker Handler ─────────────────────────────────────────────────
+  // ─── Image Picker Handler ───────────────────────────────────────────────────
   const pickImage = (
     title: string,
     onSuccess: (uri: string) => void,
@@ -129,10 +134,15 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
             mediaTypes: ['images'],
             allowsEditing: true,
             aspect,
-            quality: 0.85,
+            quality: 0.5,
+            base64: true,
           });
           if (!result.canceled && result.assets[0]) {
-            onSuccess(result.assets[0].uri);
+            const asset = result.assets[0];
+            const finalUri = asset.base64
+              ? `data:image/jpeg;base64,${asset.base64}`
+              : asset.uri;
+            onSuccess(finalUri);
           }
         },
       },
@@ -148,10 +158,15 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
             mediaTypes: ['images'],
             allowsEditing: true,
             aspect,
-            quality: 0.85,
+            quality: 0.5,
+            base64: true,
           });
           if (!result.canceled && result.assets[0]) {
-            onSuccess(result.assets[0].uri);
+            const asset = result.assets[0];
+            const finalUri = asset.base64
+              ? `data:image/jpeg;base64,${asset.base64}`
+              : asset.uri;
+            onSuccess(finalUri);
           }
         },
       },
@@ -159,20 +174,18 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
     ]);
   };
 
-
-
-  // ─── Stage Transitions (All Mandatory) ───────────────────────────────────
+  // ─── Step Navigation Handlers ───────────────────────────────────────────────
   const handleProfileNext = () => {
     let valid = true;
     if (!name.trim()) {
-      setNameError('Please enter your full name');
+      setNameError('Please enter your full legal name');
       valid = false;
     } else {
       setNameError('');
     }
 
     if (!gender) {
-      setGenderError('Please select gender');
+      setGenderError('Please select your gender');
       valid = false;
     } else {
       setGenderError('');
@@ -181,13 +194,36 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
     if (!photoUri) {
       Alert.alert(
         'Profile Photo Required',
-        'Please upload or take a clear profile photo before proceeding.'
+        'Please upload or take a clear selfie photo before continuing.'
       );
       return;
     }
 
     if (!valid) return;
     setCurrentStep('DRIVER_DOCS');
+  };
+
+  const isDateInFuture = (dateStr: string): boolean => {
+    if (!dateStr || !dateStr.trim()) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const parts = dateStr.trim().split(' ');
+    if (parts.length === 3) {
+      const d = parseInt(parts[0], 10);
+      const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(parts[1]);
+      const y = parseInt(parts[2], 10);
+      if (!isNaN(d) && m !== -1 && !isNaN(y)) {
+        const check = new Date(y, m, d);
+        check.setHours(0, 0, 0, 0);
+        return check >= today;
+      }
+    }
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) {
+      parsed.setHours(0, 0, 0, 0);
+      return parsed >= today;
+    }
+    return true;
   };
 
   const handleDriverDocsNext = () => {
@@ -200,7 +236,10 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
     }
 
     if (!dlValidUntil.trim()) {
-      setDlValidError('Please enter license expiry date');
+      setDlValidError('Please select license expiry date');
+      valid = false;
+    } else if (!isDateInFuture(dlValidUntil)) {
+      setDlValidError('License expiry date must be in the future (not past)');
       valid = false;
     } else {
       setDlValidError('');
@@ -236,14 +275,14 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
     }
 
     if (!vehicleNumber.trim()) {
-      setVehicleNumberError('Please enter vehicle registration number (number plate)');
+      setVehicleNumberError('Please enter vehicle registration number (e.g. KA 05 MN 4821)');
       valid = false;
     } else {
       setVehicleNumberError('');
     }
 
     if (!vehiclePhotoUri) {
-      Alert.alert('Vehicle Photo Required', 'Please upload a photo of your vehicle.');
+      Alert.alert('Vehicle Photo Required', 'Please upload a photo of your vehicle exterior.');
       return;
     }
 
@@ -254,6 +293,9 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
 
     if (!fcValidUntil.trim()) {
       setFcValidError('Please select RC / FC validity date');
+      valid = false;
+    } else if (!isDateInFuture(fcValidUntil)) {
+      setFcValidError('RC / FC validity date must be in the future (not past)');
       valid = false;
     } else {
       setFcValidError('');
@@ -267,6 +309,9 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
     if (!insuranceValidUntil.trim()) {
       setInsuranceValidError('Please select insurance expiry date');
       valid = false;
+    } else if (!isDateInFuture(insuranceValidUntil)) {
+      setInsuranceValidError('Insurance expiry date must be in the future (not past)');
+      valid = false;
     } else {
       setInsuranceValidError('');
     }
@@ -278,6 +323,9 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
 
     if (!permitValidUntil.trim()) {
       setPermitValidError('Please select permit expiry date');
+      valid = false;
+    } else if (!isDateInFuture(permitValidUntil)) {
+      setPermitValidError('Permit expiry date must be in the future (not past)');
       valid = false;
     } else {
       setPermitValidError('');
@@ -296,11 +344,20 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
 
     const effectiveMobile = (driverMobile || pendingMobile || driver.mobile).trim();
 
+    // Helper: Ensure photo is always a web-renderable URI (base64 data URI or HTTP URL)
+    const sanitizePhoto = (uri: string | null, fallback: string): string => {
+      if (!uri) return fallback;
+      if (uri.startsWith('data:') || uri.startsWith('http://') || uri.startsWith('https://')) {
+        return uri;
+      }
+      return fallback;
+    };
+
     const updatedDriver: Driver = {
       ...driver,
       id: targetDriverId,
       name: name.trim(),
-      profile_image: photoUri || SAMPLE_AVATAR,
+      profile_image: sanitizePhoto(photoUri, SAMPLE_AVATAR),
       mobile: effectiveMobile,
       email: `${name.trim().toLowerCase().replace(/\s+/g, '.')}@pickmi.com`,
       online_status: 'ONLINE',
@@ -318,23 +375,19 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
       vehicle_type: vehicleType,
       vehicle_model: vehicleModel.trim(),
       vehicle_number: vehicleNumber.trim().toUpperCase(),
-      vehicle_image: vehiclePhotoUri || SAMPLE_VEHICLE,
+      vehicle_image: sanitizePhoto(vehiclePhotoUri, SAMPLE_VEHICLE),
       created_at: new Date().toISOString(),
     };
 
-    // 1. Save Driver Info
     updateProfile(updatedDriver);
-
-    // 2. Save Vehicle Info
     updateVehicle(updatedVehicle);
 
-    // 3. Save Driver Documents (Including DL Front & Back)
     const newDocs: DriverDocument[] = [
       {
         id: `doc_dl_front_${Date.now()}`,
         driver_id: targetDriverId,
         document_type: 'Driving Licence (Front)',
-        document_url: dlFrontPhotoUri || SAMPLE_DL_FRONT,
+        document_url: sanitizePhoto(dlFrontPhotoUri, SAMPLE_DL_FRONT),
         document_number: dlNumber.trim().toUpperCase(),
         valid_until: dlValidUntil.trim() || '15 Jun 2035',
         verification_status: 'Pending',
@@ -344,7 +397,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
         id: `doc_dl_back_${Date.now()}`,
         driver_id: targetDriverId,
         document_type: 'Driving Licence (Back)',
-        document_url: dlBackPhotoUri || SAMPLE_DL_BACK,
+        document_url: sanitizePhoto(dlBackPhotoUri, SAMPLE_DL_BACK),
         document_number: dlNumber.trim().toUpperCase(),
         valid_until: dlValidUntil.trim() || '15 Jun 2035',
         verification_status: 'Pending',
@@ -354,7 +407,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
         id: `doc_rc_${Date.now()}`,
         driver_id: targetDriverId,
         document_type: 'RC',
-        document_url: rcPhotoUri || SAMPLE_RC,
+        document_url: sanitizePhoto(rcPhotoUri, SAMPLE_RC),
         document_number: `${vehicleNumber.trim().toUpperCase().replace(/\s+/g, '')}-REG`,
         valid_until: fcValidUntil.trim() || '18 Nov 2038',
         verification_status: 'Pending',
@@ -364,7 +417,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
         id: `doc_ins_${Date.now()}`,
         driver_id: targetDriverId,
         document_type: 'Insurance',
-        document_url: insurancePhotoUri || SAMPLE_INSURANCE,
+        document_url: sanitizePhoto(insurancePhotoUri, SAMPLE_INSURANCE),
         document_number: 'BAJAJ-ALLIANZ-7821',
         valid_until: insuranceValidUntil.trim() || '24 Oct 2027',
         verification_status: 'Pending',
@@ -374,7 +427,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
         id: `doc_pmt_${Date.now()}`,
         driver_id: targetDriverId,
         document_type: 'Permit',
-        document_url: permitPhotoUri || SAMPLE_PERMIT,
+        document_url: sanitizePhoto(permitPhotoUri, SAMPLE_PERMIT),
         document_number: 'KA-COMM-CAB-9102',
         valid_until: permitValidUntil.trim() || '31 Dec 2026',
         verification_status: 'Pending',
@@ -383,7 +436,6 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
     ];
     updateDocuments(newDocs);
 
-    // Push everything directly to Supabase now
     const result = await completeProfileSetup(updatedDriver, updatedVehicle, newDocs);
 
     setIsSubmitting(false);
@@ -405,7 +457,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
     onComplete();
   };
 
-  // ─── Render Document Upload Card Helper ───────────────────────────────────
+  // ─── Render Document Upload Card Helper ─────────────────────────────────────
   const renderDocCard = (
     title: string,
     subtitle: string,
@@ -421,7 +473,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
     }
   ) => {
     return (
-      <View style={[styles.docUploadCard, Shadows.sm]}>
+      <View style={styles.card}>
         <View style={styles.docHeader}>
           <View style={styles.docIconBox}>
             <Ionicons name={iconName} size={18} color={Colors.primary} />
@@ -436,8 +488,8 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
               <Text style={styles.uploadedBadgeText}>Uploaded</Text>
             </View>
           ) : (
-            <View style={styles.requiredBadge}>
-              <Text style={styles.requiredBadgeText}>Mandatory</Text>
+            <View style={styles.mandatoryPill}>
+              <Text style={styles.mandatoryPillText}>Mandatory</Text>
             </View>
           )}
         </View>
@@ -446,23 +498,27 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
           <View style={styles.docPreviewContainer}>
             <Image source={{ uri: photoUrl }} style={styles.docImagePreview} resizeMode="cover" />
             <View style={styles.docPreviewOverlay}>
-              <TouchableOpacity style={styles.docActionBtn} onPress={onUpload}>
-                <Ionicons name="camera-reverse" size={14} color={Colors.textPrimary} />
+              <TouchableOpacity style={styles.docActionBtn} onPress={onUpload} activeOpacity={0.8}>
+                <Ionicons name="camera-reverse" size={13} color={Colors.textPrimary} />
                 <Text style={styles.docActionBtnText}>Retake</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.docActionBtn, styles.docRemoveBtn]} onPress={onRemove}>
-                <Ionicons name="trash-outline" size={14} color={Colors.danger} />
+              <TouchableOpacity
+                style={[styles.docActionBtn, styles.docRemoveBtn]}
+                onPress={onRemove}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="trash-outline" size={13} color={Colors.danger} />
                 <Text style={[styles.docActionBtnText, { color: Colors.danger }]}>Remove</Text>
               </TouchableOpacity>
             </View>
           </View>
         ) : (
-          <TouchableOpacity style={styles.uploadPlaceholder} onPress={onUpload} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.uploadPlaceholder} onPress={onUpload} activeOpacity={0.75}>
             <View style={styles.uploadIconCircle}>
-              <Ionicons name="cloud-upload-outline" size={24} color={Colors.primary} />
+              <Ionicons name="cloud-upload-outline" size={22} color={Colors.primary} />
             </View>
-            <Text style={styles.uploadPlaceholderText}>Tap to upload or take photo</Text>
-            <Text style={styles.uploadPlaceholderSub}>Camera or Gallery • JPG, PNG</Text>
+            <Text style={styles.uploadPlaceholderText}>Upload or Capture Photo</Text>
+            <Text style={styles.uploadPlaceholderSub}>JPG, PNG • Camera or Photo Gallery</Text>
           </TouchableOpacity>
         )}
 
@@ -497,7 +553,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                     !datePicker.value && styles.datePickerTriggerPlaceholder,
                   ]}
                 >
-                  {datePicker.value || 'Tap to select expiry date'}
+                  {datePicker.value || 'Select validity / expiry date'}
                 </Text>
               </View>
               <View style={styles.datePickerTriggerRight}>
@@ -531,36 +587,136 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
       {/* ── Fixed Top Stepper Bar ── */}
       <View style={styles.topStepper}>
         <View style={styles.stepperHeader}>
-          <Text style={styles.stepperTitle}>Driver Onboarding</Text>
-          <View style={styles.stepPillHeader}>
-            <Text style={styles.stepperStepText}>
-              {currentStep === 'PROFILE' && 'Basic Profile'}
-              {currentStep === 'DRIVER_DOCS' && 'Step 1: Driver License'}
-              {currentStep === 'VEHICLE_DOCS' && 'Step 2: Vehicle & Docs'}
+          <View style={styles.stepperBrandRow}>
+            <View style={styles.brandIconMini}>
+              <Ionicons name="shield-checkmark" size={14} color={Colors.white} />
+            </View>
+            <Text style={styles.stepperTitle}>Driver Onboarding</Text>
+          </View>
+          <View style={styles.stepCounterBadge}>
+            <Text style={styles.stepCounterText}>
+              {currentStep === 'PROFILE'
+                ? 'Step 1 of 3'
+                : currentStep === 'DRIVER_DOCS'
+                ? 'Step 2 of 3'
+                : 'Step 3 of 3'}
             </Text>
           </View>
         </View>
 
-        {/* 3-segment progress indicator */}
-        <View style={styles.progressTrack}>
+        {/* 3-Step Interactive Timeline */}
+        <View style={styles.timelineRow}>
+          {/* Step 1 */}
+          <View style={styles.timelineStepItem}>
+            <View
+              style={[
+                styles.stepCircle,
+                currentStep === 'PROFILE'
+                  ? styles.stepCircleActive
+                  : styles.stepCircleCompleted,
+              ]}
+            >
+              {currentStep !== 'PROFILE' ? (
+                <Ionicons name="checkmark" size={14} color={Colors.white} />
+              ) : (
+                <Text style={styles.stepNumberActive}>1</Text>
+              )}
+            </View>
+            <Text
+              style={[
+                styles.stepLabel,
+                currentStep === 'PROFILE' && styles.stepLabelActive,
+              ]}
+            >
+              Profile
+            </Text>
+          </View>
+
+          {/* Line 1 -> 2 */}
           <View
             style={[
-              styles.progressBar,
-              {
-                width:
-                  currentStep === 'PROFILE'
-                    ? '33%'
-                    : currentStep === 'DRIVER_DOCS'
-                    ? '66%'
-                    : '100%',
-              },
+              styles.timelineLine,
+              currentStep === 'DRIVER_DOCS' || currentStep === 'VEHICLE_DOCS'
+                ? styles.timelineLineActive
+                : null,
             ]}
           />
-        </View>
 
+          {/* Step 2 */}
+          <View style={styles.timelineStepItem}>
+            <View
+              style={[
+                styles.stepCircle,
+                currentStep === 'DRIVER_DOCS'
+                  ? styles.stepCircleActive
+                  : currentStep === 'VEHICLE_DOCS'
+                  ? styles.stepCircleCompleted
+                  : styles.stepCircleUpcoming,
+              ]}
+            >
+              {currentStep === 'VEHICLE_DOCS' ? (
+                <Ionicons name="checkmark" size={14} color={Colors.white} />
+              ) : (
+                <Text
+                  style={[
+                    styles.stepNumber,
+                    currentStep === 'DRIVER_DOCS' && styles.stepNumberActive,
+                  ]}
+                >
+                  2
+                </Text>
+              )}
+            </View>
+            <Text
+              style={[
+                styles.stepLabel,
+                currentStep === 'DRIVER_DOCS' && styles.stepLabelActive,
+              ]}
+            >
+              License
+            </Text>
+          </View>
+
+          {/* Line 2 -> 3 */}
+          <View
+            style={[
+              styles.timelineLine,
+              currentStep === 'VEHICLE_DOCS' ? styles.timelineLineActive : null,
+            ]}
+          />
+
+          {/* Step 3 */}
+          <View style={styles.timelineStepItem}>
+            <View
+              style={[
+                styles.stepCircle,
+                currentStep === 'VEHICLE_DOCS'
+                  ? styles.stepCircleActive
+                  : styles.stepCircleUpcoming,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.stepNumber,
+                  currentStep === 'VEHICLE_DOCS' && styles.stepNumberActive,
+                ]}
+              >
+                3
+              </Text>
+            </View>
+            <Text
+              style={[
+                styles.stepLabel,
+                currentStep === 'VEHICLE_DOCS' && styles.stepLabelActive,
+              ]}
+            >
+              Vehicle
+            </Text>
+          </View>
+        </View>
       </View>
 
-      {/* ── Main Scrollable Content with Fresh Key on Each Step for Guaranteed Scrolling ── */}
+      {/* ── Main Scrollable Content ── */}
       <KeyboardAvoidingView
         style={styles.contentWrap}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -569,75 +725,93 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
           key={currentStep}
           style={styles.scrollArea}
           contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={true}
+          showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          bounces={true}
-          alwaysBounceVertical={true}
         >
           {/* ================================================================ */}
-          {/* STAGE 0: PROFILE SETUP                                           */}
+          {/* STAGE 0: BASIC PROFILE SETUP                                     */}
           {/* ================================================================ */}
           {currentStep === 'PROFILE' && (
             <View style={styles.stepInner}>
               <View style={styles.header}>
                 <View style={styles.stepBadge}>
-                  <Text style={styles.stepBadgeText}>Welcome to PickMi Driver</Text>
+                  <Ionicons name="sparkles" size={12} color={Colors.primary} />
+                  <Text style={styles.stepBadgeText}>Step 1: Driver Profile</Text>
                 </View>
                 <Text style={styles.title}>Create Your Profile</Text>
                 <Text style={styles.subtitle}>
-                  Passengers and dispatch will identify you by your name and verified photo.
+                  Enter your details to register as an active PickMi Driver Partner.
                 </Text>
               </View>
 
-              {/* Profile Photo Upload */}
-              <View style={[styles.card, Shadows.sm]}>
+              {/* Profile Photo / Selfie Card */}
+              <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardLabel}>PROFILE PHOTO</Text>
-                  <Text style={styles.mandatoryPill}>Mandatory</Text>
+                  <Text style={styles.cardLabel}>PROFILE SELFIE</Text>
+                  <View style={styles.mandatoryPill}>
+                    <Text style={styles.mandatoryPillText}>Mandatory</Text>
+                  </View>
                 </View>
 
-                <View style={styles.photoSection}>
+                <View style={styles.photoCenterBox}>
                   <View style={styles.avatarWrap}>
                     {photoUri ? (
                       <Image source={{ uri: photoUri }} style={styles.avatar} />
                     ) : (
                       <View style={styles.avatarEmpty}>
-                        <Ionicons name="person" size={34} color={Colors.textMuted} />
+                        <Ionicons name="person" size={38} color="#94A3B8" />
                       </View>
                     )}
-                    {photoUri && (
-                      <View style={styles.avatarCheckBadge}>
-                        <Ionicons name="checkmark" size={13} color={Colors.white} />
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.uploadActions}>
                     <TouchableOpacity
-                      style={styles.uploadBtn}
+                      style={styles.avatarCameraBadge}
                       onPress={() =>
                         pickImage('Profile Photo', (uri) => setPhotoUri(uri), [1, 1])
                       }
                       activeOpacity={0.8}
                     >
-                      <Ionicons name="camera-outline" size={18} color={Colors.primary} />
-                      <Text style={styles.uploadBtnText}>
-                        {photoUri ? 'Change Photo' : 'Take / Upload Selfie'}
+                      <Ionicons name="camera" size={16} color={Colors.white} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.photoActionRow}>
+                    <TouchableOpacity
+                      style={styles.photoPillBtn}
+                      onPress={() =>
+                        pickImage('Profile Photo', (uri) => setPhotoUri(uri), [1, 1])
+                      }
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="camera-outline" size={16} color={Colors.primary} />
+                      <Text style={styles.photoPillBtnText}>
+                        {photoUri ? 'Change Selfie' : 'Take / Upload Selfie'}
                       </Text>
                     </TouchableOpacity>
-                    <Text style={styles.uploadHint}>
-                      Clear front-facing photo required.
-                    </Text>
+                  </View>
+
+                  <View style={styles.photoTipsRow}>
+                    <View style={styles.tipItem}>
+                      <Ionicons name="checkmark-circle" size={12} color={Colors.successDark} />
+                      <Text style={styles.tipText}>Front-facing</Text>
+                    </View>
+                    <View style={styles.tipItem}>
+                      <Ionicons name="checkmark-circle" size={12} color={Colors.successDark} />
+                      <Text style={styles.tipText}>Good lighting</Text>
+                    </View>
+                    <View style={styles.tipItem}>
+                      <Ionicons name="checkmark-circle" size={12} color={Colors.successDark} />
+                      <Text style={styles.tipText}>No sunglasses</Text>
+                    </View>
                   </View>
                 </View>
               </View>
 
               {/* Full Name */}
-              <View style={[styles.card, Shadows.sm]}>
+              <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardLabel}>YOUR FULL LEGAL NAME</Text>
-                  <Text style={styles.mandatoryPill}>Mandatory</Text>
+                  <Text style={styles.cardLabel}>FULL LEGAL NAME</Text>
+                  <View style={styles.mandatoryPill}>
+                    <Text style={styles.mandatoryPillText}>Mandatory</Text>
+                  </View>
                 </View>
                 <View
                   style={[
@@ -648,14 +822,14 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                 >
                   <Ionicons
                     name="person-outline"
-                    size={20}
+                    size={18}
                     color={
                       nameError ? Colors.danger : name.length > 0 ? Colors.primary : Colors.textMuted
                     }
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter your full name as per DL"
+                    placeholder="Enter full name as printed on Driving License"
                     placeholderTextColor={Colors.textPlaceholder}
                     value={name}
                     onChangeText={(t) => {
@@ -676,8 +850,13 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
               </View>
 
               {/* Gender */}
-              <View style={[styles.card, Shadows.sm]}>
-                <Text style={styles.cardLabel}>GENDER</Text>
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.cardLabel}>GENDER</Text>
+                  <View style={styles.mandatoryPill}>
+                    <Text style={styles.mandatoryPillText}>Mandatory</Text>
+                  </View>
+                </View>
                 <View style={styles.genderRow}>
                   {(['Male', 'Female', 'Other'] as Gender[]).map((g) => (
                     <TouchableOpacity
@@ -695,7 +874,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                     >
                       <Ionicons
                         name={GENDER_ICONS[g!]}
-                        size={18}
+                        size={17}
                         color={gender === g ? Colors.white : Colors.textSecondary}
                       />
                       <Text
@@ -712,68 +891,54 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
               </View>
 
               {/* Registered Mobile */}
-              <View style={[styles.card, Shadows.sm]}>
+              <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.cardLabel}>REGISTERED MOBILE NUMBER</Text>
-                  <Text style={styles.mandatoryPill}>Mandatory</Text>
-                </View>
-                <View style={[styles.inputWrapper, styles.inputWrapperFilled]}>
-                  <Ionicons name="call-outline" size={20} color={Colors.primary} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="+91 98765 43210"
-                    placeholderTextColor={Colors.textPlaceholder}
-                    value={driverMobile}
-                    onChangeText={setDriverMobile}
-                    keyboardType="phone-pad"
-                    maxLength={18}
-                  />
                   <View style={styles.verifiedPill}>
-                    <Ionicons name="shield-checkmark" size={13} color={Colors.successDark} />
+                    <Ionicons name="shield-checkmark" size={12} color={Colors.successDark} />
                     <Text style={styles.verifiedPillText}>Verified</Text>
                   </View>
                 </View>
+                <View style={[styles.inputWrapper, styles.inputWrapperDisabled]}>
+                  <Ionicons name="call-outline" size={18} color={Colors.primary} />
+                  <TextInput
+                    style={[styles.input, styles.inputDisabled]}
+                    value={driverMobile}
+                    editable={false}
+                    keyboardType="phone-pad"
+                  />
+                  <Ionicons name="lock-closed" size={16} color="#94A3B8" />
+                </View>
+                <Text style={styles.inputHelperText}>
+                  Linked via OTP verification. Contact dispatch to change number.
+                </Text>
               </View>
             </View>
           )}
 
           {/* ================================================================ */}
-          {/* STEP 1: DRIVER DETAILS & DRIVING LICENSE (FRONT & BACK)          */}
+          {/* STEP 1: DRIVING LICENSE (FRONT & BACK)                            */}
           {/* ================================================================ */}
           {currentStep === 'DRIVER_DOCS' && (
             <View style={styles.stepInner}>
               <View style={styles.header}>
                 <View style={styles.stepBadge}>
-                  <Text style={styles.stepBadgeText}>Step 1 of 2: Driver Documents</Text>
+                  <Ionicons name="card" size={12} color={Colors.primary} />
+                  <Text style={styles.stepBadgeText}>Step 2: License Verification</Text>
                 </View>
                 <Text style={styles.title}>Driving License Details</Text>
                 <Text style={styles.subtitle}>
-                  Enter your DL number and upload both Front and Back photos. All fields are mandatory.
+                  Provide your official DL number and upload high-resolution front and back photos.
                 </Text>
               </View>
 
-              {/* Verified Driver Info Pill */}
-              <View style={[styles.mobilePill, Shadows.sm, { marginBottom: 14 }]}>
-                <View style={styles.mobilePillLeft}>
-                  <Ionicons name="person-circle-outline" size={20} color={Colors.primary} />
-                  <View style={{ marginLeft: 8 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textPrimary }}>
-                      {name || 'Registered Driver'}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: Colors.textMuted }}>{pendingMobile}</Text>
-                  </View>
-                </View>
-                <View style={styles.verifiedPill}>
-                  <Ionicons name="shield-checkmark" size={13} color={Colors.successDark} />
-                  <Text style={styles.verifiedPillText}>Identity Set</Text>
-                </View>
-              </View>
-
               {/* DL Number Input */}
-              <View style={[styles.card, Shadows.sm]}>
+              <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.cardLabel}>DRIVING LICENSE NUMBER</Text>
-                  <Text style={styles.mandatoryPill}>Mandatory</Text>
+                  <View style={styles.mandatoryPill}>
+                    <Text style={styles.mandatoryPillText}>Mandatory</Text>
+                  </View>
                 </View>
                 <View
                   style={[
@@ -784,7 +949,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                 >
                   <Ionicons
                     name="card-outline"
-                    size={20}
+                    size={18}
                     color={dlError ? Colors.danger : Colors.primary}
                   />
                   <TextInput
@@ -809,11 +974,13 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                 ) : null}
               </View>
 
-              {/* DL Validity (Date Picker Trigger) */}
-              <View style={[styles.card, Shadows.sm]}>
+              {/* DL Validity */}
+              <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardLabel}>LICENSE EXPIRY / VALID UNTIL</Text>
-                  <Text style={styles.mandatoryPill}>Mandatory</Text>
+                  <Text style={styles.cardLabel}>LICENSE VALID UNTIL / EXPIRY</Text>
+                  <View style={styles.mandatoryPill}>
+                    <Text style={styles.mandatoryPillText}>Mandatory</Text>
+                  </View>
                 </View>
                 <TouchableOpacity
                   style={[
@@ -827,7 +994,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                   <View style={styles.datePickerTriggerLeft}>
                     <Ionicons
                       name={dlValidUntil ? 'calendar' : 'calendar-outline'}
-                      size={20}
+                      size={18}
                       color={dlValidUntil ? Colors.primary : Colors.textMuted}
                     />
                     <Text
@@ -861,20 +1028,20 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                 ) : null}
               </View>
 
-              {/* 1. DL Front Side Photo Upload Card (Starts Empty) */}
+              {/* DL Front Side Photo Upload Card */}
               {renderDocCard(
                 'Driving License (Front Side)',
-                'Photo showing driver name, DL number & portrait',
+                'Clear photo showing portrait, name, and DL number',
                 dlFrontPhotoUri,
                 () => pickImage('DL Front Side', (uri) => setDlFrontPhotoUri(uri)),
                 () => setDlFrontPhotoUri(null),
                 'card-outline'
               )}
 
-              {/* 2. DL Back Side Photo Upload Card (Starts Empty) */}
+              {/* DL Back Side Photo Upload Card */}
               {renderDocCard(
                 'Driving License (Back Side)',
-                'Photo showing vehicle category, badge & address',
+                'Photo showing vehicle category badges and address',
                 dlBackPhotoUri,
                 () => pickImage('DL Back Side', (uri) => setDlBackPhotoUri(uri)),
                 () => setDlBackPhotoUri(null),
@@ -884,43 +1051,49 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
           )}
 
           {/* ================================================================ */}
-          {/* STEP 2: VEHICLE DETAILS & VEHICLE DOCUMENTS                      */}
+          {/* STEP 2: VEHICLE DETAILS & COMPLIANCE DOCUMENTS                   */}
           {/* ================================================================ */}
           {currentStep === 'VEHICLE_DOCS' && (
             <View style={styles.stepInner}>
               <View style={styles.header}>
                 <View style={styles.stepBadge}>
-                  <Text style={styles.stepBadgeText}>Step 2 of 2: Vehicle & Documents</Text>
+                  <Ionicons name="car" size={12} color={Colors.primary} />
+                  <Text style={styles.stepBadgeText}>Step 3: Vehicle & Documents</Text>
                 </View>
-                <Text style={styles.title}>Vehicle Details & Documents</Text>
+                <Text style={styles.title}>Vehicle Information</Text>
                 <Text style={styles.subtitle}>
-                  All fields and document uploads below are mandatory to complete registration.
+                  Add your vehicle specifications and upload RC, insurance, and permit.
                 </Text>
               </View>
 
               {/* Vehicle Type Selection */}
-              <View style={[styles.card, Shadows.sm]}>
-                <Text style={styles.cardLabel}>SELECT VEHICLE CATEGORY</Text>
-                <View style={styles.vehicleTypeRow}>
-                  {VEHICLE_TYPES.map((type) => (
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.cardLabel}>SELECT VEHICLE CATEGORY</Text>
+                  <View style={styles.mandatoryPill}>
+                    <Text style={styles.mandatoryPillText}>Mandatory</Text>
+                  </View>
+                </View>
+                <View style={styles.vehicleTypeGrid}>
+                  {VEHICLE_TYPES.map(({ type, icon }) => (
                     <TouchableOpacity
                       key={type}
                       style={[
-                        styles.vehicleTypeChip,
-                        vehicleType === type && styles.vehicleTypeChipActive,
+                        styles.vehicleTypeCard,
+                        vehicleType === type && styles.vehicleTypeCardActive,
                       ]}
                       onPress={() => setVehicleType(type)}
                       activeOpacity={0.8}
                     >
                       <Ionicons
-                        name="car-sport"
-                        size={16}
-                        color={vehicleType === type ? Colors.white : Colors.textSecondary}
+                        name={icon}
+                        size={20}
+                        color={vehicleType === type ? Colors.primary : '#64748B'}
                       />
                       <Text
                         style={[
-                          styles.vehicleTypeLabel,
-                          vehicleType === type && styles.vehicleTypeLabelActive,
+                          styles.vehicleTypeCardText,
+                          vehicleType === type && styles.vehicleTypeCardTextActive,
                         ]}
                       >
                         {type}
@@ -931,10 +1104,12 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
               </View>
 
               {/* Vehicle Model & Registration Number */}
-              <View style={[styles.card, Shadows.sm]}>
+              <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.cardLabel}>VEHICLE MODEL & MAKE</Text>
-                  <Text style={styles.mandatoryPill}>Mandatory</Text>
+                  <View style={styles.mandatoryPill}>
+                    <Text style={styles.mandatoryPillText}>Mandatory</Text>
+                  </View>
                 </View>
                 <View
                   style={[
@@ -942,7 +1117,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                     vehicleModelError ? styles.inputWrapperError : null,
                   ]}
                 >
-                  <Ionicons name="car-outline" size={20} color={Colors.primary} />
+                  <Ionicons name="car-outline" size={18} color={Colors.primary} />
                   <TextInput
                     style={styles.input}
                     placeholder="e.g. Maruti Suzuki Dzire VXI"
@@ -963,8 +1138,10 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                 ) : null}
 
                 <View style={[styles.cardHeaderRow, { marginTop: 14 }]}>
-                  <Text style={styles.cardLabel}>VEHICLE NUMBER (NUMBER PLATE)</Text>
-                  <Text style={styles.mandatoryPill}>Mandatory</Text>
+                  <Text style={styles.cardLabel}>VEHICLE REGISTRATION NUMBER (NUMBER PLATE)</Text>
+                  <View style={styles.mandatoryPill}>
+                    <Text style={styles.mandatoryPillText}>Mandatory</Text>
+                  </View>
                 </View>
                 <View
                   style={[
@@ -972,7 +1149,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                     vehicleNumberError ? styles.inputWrapperError : null,
                   ]}
                 >
-                  <Ionicons name="browsers-outline" size={20} color={Colors.primary} />
+                  <Ionicons name="browsers-outline" size={18} color={Colors.primary} />
                   <TextInput
                     style={styles.input}
                     placeholder="e.g. KA 05 MN 4821"
@@ -994,7 +1171,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                 ) : null}
               </View>
 
-              {/* 1. Vehicle Front/Exterior Photo (Mandatory) */}
+              {/* 1. Vehicle Exterior Photo */}
               {renderDocCard(
                 'Vehicle Photo (Exterior)',
                 'Front angle photo showing number plate clearly',
@@ -1004,10 +1181,10 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                 'car-outline'
               )}
 
-              {/* 2. Vehicle RC Photo & Fitness Certificate (FC) Validity (Mandatory) */}
+              {/* 2. Vehicle RC Photo & Fitness Certificate (FC) Validity */}
               {renderDocCard(
                 'RC (Registration Certificate)',
-                'Clear photo of original RC smart card or book',
+                'Clear photo of original RC smart card or booklet',
                 rcPhotoUri,
                 () => pickImage('RC Document', (uri) => setRcPhotoUri(uri)),
                 () => setRcPhotoUri(null),
@@ -1020,10 +1197,10 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                 }
               )}
 
-              {/* 3. Vehicle Insurance Photo & Policy Expiry (Mandatory) */}
+              {/* 3. Vehicle Insurance Photo & Policy Expiry */}
               {renderDocCard(
-                'Vehicle Insurance',
-                'Valid commercial or comprehensive insurance policy',
+                'Vehicle Insurance Policy',
+                'Valid commercial or comprehensive insurance document',
                 insurancePhotoUri,
                 () => pickImage('Insurance Photo', (uri) => setInsurancePhotoUri(uri)),
                 () => setInsurancePhotoUri(null),
@@ -1036,10 +1213,10 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                 }
               )}
 
-              {/* 4. Commercial / State Permit Photo & Expiry (Mandatory) */}
+              {/* 4. Commercial / State Permit Photo & Expiry */}
               {renderDocCard(
-                'Vehicle Permit',
-                'Commercial passenger carriage or tourist permit',
+                'Vehicle Commercial Permit',
+                'Valid passenger carriage or tourist taxi permit',
                 permitPhotoUri,
                 () => pickImage('Permit Photo', (uri) => setPermitPhotoUri(uri)),
                 () => setPermitPhotoUri(null),
@@ -1056,11 +1233,11 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* ── Fixed Bottom Call-To-Action (CTA) Bar with Background & Elevation ── */}
-      <View style={[styles.bottomBar, Shadows.bottomSheet]}>
+      {/* ── Fixed Bottom Call-To-Action (CTA) Bar (Flat, No Shadows) ── */}
+      <View style={styles.bottomBar}>
         {currentStep === 'PROFILE' && (
           <PickMiButton
-            title="Next: Driver License (Step 1) →"
+            title="Next: Driver License (Step 2) →"
             onPress={handleProfileNext}
             variant="primary"
             size="lg"
@@ -1079,7 +1256,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
             </TouchableOpacity>
 
             <PickMiButton
-              title="Next: Vehicle (Step 2) →"
+              title="Next: Vehicle (Step 3) →"
               onPress={handleDriverDocsNext}
               variant="primary"
               size="lg"
@@ -1101,12 +1278,12 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
 
             {isSubmitting ? (
               <View style={styles.submittingRow}>
-                <ActivityIndicator color={Colors.primary} />
-                <Text style={styles.submittingText}>Registering Driver…</Text>
+                <ActivityIndicator color={Colors.primary} size="small" />
+                <Text style={styles.submittingText}>Registering Driver Partner…</Text>
               </View>
             ) : (
               <PickMiButton
-                title="Complete Setup & Enter App →"
+                title="Complete Registration ✓"
                 onPress={handleFinalSubmit}
                 variant="success"
                 size="lg"
@@ -1120,6 +1297,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
       {/* ── Interactive Date Picker Modal for Driving License, RC/FC, Insurance, Permit ── */}
       <PickMiDatePickerModal
         visible={datePickerTarget !== null}
+        futureOnly={true}
         title={
           datePickerTarget === 'DL'
             ? 'Driving License Expiry'
@@ -1174,16 +1352,16 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
         onRequestClose={handleProceedToHome}
       >
         <View style={styles.successModalOverlay}>
-          <View style={[styles.successModalCard, Shadows.lg]}>
+          <View style={styles.successModalCard}>
             {/* Animated Celebration Icon */}
             <View style={styles.successIconCircleOuter}>
               <View style={styles.successIconCircleInner}>
-                <Ionicons name="checkmark-sharp" size={40} color={Colors.white} />
+                <Ionicons name="checkmark-sharp" size={36} color={Colors.white} />
               </View>
             </View>
 
             {/* Title & Subtitle */}
-            <Text style={styles.successModalTitle}>Account Created Successfully!</Text>
+            <Text style={styles.successModalTitle}>Registration Complete!</Text>
             <Text style={styles.successModalSubtitle}>
               Your driver profile, driving license, and vehicle documents have been verified and submitted successfully.
             </Text>
@@ -1201,7 +1379,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
                 </Text>
                 <View style={styles.verifiedTagRow}>
                   <Ionicons name="shield-checkmark" size={13} color={Colors.successDark} />
-                  <Text style={styles.verifiedTagText}>All 5 Documents Submitted</Text>
+                  <Text style={styles.verifiedTagText}>All Documents Submitted</Text>
                 </View>
               </View>
             </View>
@@ -1209,7 +1387,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
             {/* Welcome message pill */}
             <View style={styles.welcomePill}>
               <Ionicons name="sparkles" size={14} color="#D97706" />
-              <Text style={styles.welcomePillText}>Welcome to PickMi Driver Partner</Text>
+              <Text style={styles.welcomePillText}>Welcome to PickMi Driver Partner Network</Text>
             </View>
 
             {/* Action CTA Button to land on Home */}
@@ -1218,7 +1396,7 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
               onPress={handleProceedToHome}
               activeOpacity={0.85}
             >
-              <Text style={styles.goToHomeBtnText}>Go to Home Page →</Text>
+              <Text style={styles.goToHomeBtnText}>Go to Driver Dashboard →</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1230,91 +1408,155 @@ export const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({ onComple
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#F8FAFC',
   },
   contentWrap: {
     flex: 1,
   },
   topStepper: {
     backgroundColor: Colors.white,
-    paddingTop: Platform.OS === 'ios' ? 52 : 36,
+    paddingTop: Platform.OS === 'ios' ? 50 : 36,
     paddingHorizontal: 20,
-    paddingBottom: 10,
+    paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-    zIndex: 10,
+    borderBottomColor: '#E2E8F0',
   },
   stepperHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 14,
+  },
+  stepperBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  brandIconMini: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   stepperTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
-    color: Colors.textPrimary,
+    color: '#0F172A',
+    letterSpacing: -0.2,
   },
-  stepPillHeader: {
-    backgroundColor: Colors.primaryLight,
+  stepCounterBadge: {
+    backgroundColor: '#EFF6FF',
     paddingHorizontal: 10,
     paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
-  stepperStepText: {
+  stepCounterText: {
     fontSize: 11,
     fontWeight: '700',
     color: Colors.primary,
   },
-  progressTrack: {
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#E5E7EB',
-    overflow: 'hidden',
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
   },
-  progressBar: {
-    height: '100%',
+  timelineStepItem: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  stepCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepCircleActive: {
     backgroundColor: Colors.primary,
-    borderRadius: 3,
   },
-
+  stepCircleCompleted: {
+    backgroundColor: Colors.success,
+  },
+  stepCircleUpcoming: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+  },
+  stepNumber: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  stepNumberActive: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  stepLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  stepLabelActive: {
+    color: Colors.primary,
+    fontWeight: '800',
+  },
+  timelineLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 8,
+    marginBottom: 16,
+  },
+  timelineLineActive: {
+    backgroundColor: Colors.primary,
+  },
   scrollArea: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 40,
-    flexGrow: 1,
+    paddingBottom: 36,
   },
   stepInner: {
     flex: 1,
   },
   header: {
     marginBottom: 16,
-    marginTop: 4,
   },
   stepBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: Colors.primaryLight,
+    backgroundColor: '#EFF6FF',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    gap: 5,
     marginBottom: 8,
   },
   stepBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     color: Colors.primary,
+    letterSpacing: 0.2,
   },
   title: {
     fontSize: 22,
-    fontWeight: '800',
-    color: Colors.textPrimary,
-    letterSpacing: -0.4,
+    fontWeight: '900',
+    color: '#0F172A',
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: '#64748B',
     marginTop: 4,
     lineHeight: 18,
   },
@@ -1322,9 +1564,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: 16,
     padding: 16,
-    marginBottom: 14,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.04)',
+    borderColor: '#E2E8F0',
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -1335,87 +1577,104 @@ const styles = StyleSheet.create({
   cardLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    color: '#475569',
+    letterSpacing: 0.5,
   },
   mandatoryPill: {
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  mandatoryPillText: {
     fontSize: 10,
     fontWeight: '700',
     color: '#DC2626',
-    backgroundColor: '#FEF2F2',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
   },
-  photoSection: {
-    flexDirection: 'row',
+  photoCenterBox: {
     alignItems: 'center',
+    paddingVertical: 6,
   },
   avatarWrap: {
     position: 'relative',
-    marginRight: 16,
+    marginBottom: 12,
   },
   avatar: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: Colors.borderLight,
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   avatarEmpty: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: '#F1F5F9',
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    backgroundColor: '#F8FAFC',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: '#CBD5E1',
   },
-  avatarCheckBadge: {
+  avatarCameraBadge: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: Colors.success,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    bottom: -2,
+    right: -2,
+    backgroundColor: Colors.primary,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: Colors.white,
   },
-  uploadActions: {
-    flex: 1,
+  photoActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
   },
-  uploadBtn: {
+  photoPillBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
     gap: 6,
-    marginBottom: 6,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
-  uploadBtnText: {
-    fontSize: 13,
+  photoPillBtnText: {
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.primary,
   },
-  uploadHint: {
+  photoTipsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  tipItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tipText: {
     fontSize: 11,
-    color: Colors.textMuted,
-    lineHeight: 15,
+    color: '#64748B',
+    fontWeight: '500',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.background,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 48,
@@ -1428,12 +1687,24 @@ const styles = StyleSheet.create({
     borderColor: Colors.danger,
     backgroundColor: '#FEF2F2',
   },
+  inputWrapperDisabled: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+  },
   input: {
     flex: 1,
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textPrimary,
-    marginLeft: 10,
+    color: '#0F172A',
+    marginLeft: 8,
+  },
+  inputDisabled: {
+    color: '#64748B',
+  },
+  inputHelperText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 6,
   },
   errorRow: {
     flexDirection: 'row',
@@ -1457,9 +1728,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: Colors.background,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     gap: 6,
   },
   genderChipActive: {
@@ -1472,165 +1743,126 @@ const styles = StyleSheet.create({
   genderLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.textSecondary,
+    color: '#64748B',
   },
   genderLabelActive: {
     color: Colors.white,
   },
-  mobilePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.white,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 14,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
-  },
-  mobilePillLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  mobilePillText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginLeft: 10,
-  },
   verifiedPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.successLight,
+    backgroundColor: '#ECFDF5',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: 6,
     gap: 4,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
   },
   verifiedPillText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
     color: Colors.successDark,
   },
-  vehicleTypeRow: {
+  vehicleTypeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  vehicleTypeChip: {
+  vehicleTypeCard: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 10,
-    backgroundColor: Colors.background,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     gap: 6,
   },
-  vehicleTypeChipActive: {
-    backgroundColor: Colors.primary,
+  vehicleTypeCardActive: {
+    backgroundColor: '#EFF6FF',
     borderColor: Colors.primary,
   },
-  vehicleTypeLabel: {
+  vehicleTypeCardText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textSecondary,
+    color: '#64748B',
   },
-  vehicleTypeLabelActive: {
-    color: Colors.white,
-  },
-  docUploadCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.04)',
+  vehicleTypeCardTextActive: {
+    color: Colors.primary,
+    fontWeight: '800',
   },
   docHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   docIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: Colors.primaryLight,
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   docTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
-    color: Colors.textPrimary,
+    color: '#0F172A',
   },
   docSubtitle: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: '#64748B',
     marginTop: 1,
   },
   uploadedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.successLight,
+    backgroundColor: '#ECFDF5',
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
     gap: 4,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
   },
   uploadedBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
     color: Colors.successDark,
-  },
-  requiredBadge: {
-    backgroundColor: '#FEF2F2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-  },
-  requiredBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#DC2626',
   },
   docPreviewContainer: {
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Colors.borderLight,
+    borderColor: '#E2E8F0',
     position: 'relative',
-    height: 140,
-    backgroundColor: '#000',
+    height: 130,
+    backgroundColor: '#0F172A',
   },
   docImagePreview: {
     width: '100%',
     height: '100%',
-    opacity: 0.95,
   },
   docPreviewOverlay: {
     position: 'absolute',
     bottom: 8,
     right: 8,
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
   docActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 6,
     gap: 4,
   },
   docRemoveBtn: {
-    backgroundColor: 'rgba(255, 235, 235, 0.94)',
+    backgroundColor: '#FEF2F2',
   },
   docActionBtnText: {
     fontSize: 11,
@@ -1640,78 +1872,35 @@ const styles = StyleSheet.create({
   uploadPlaceholder: {
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: '#93C5FD',
+    borderColor: '#BFDBFE',
     backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    paddingVertical: 22,
+    borderRadius: 12,
+    paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   uploadIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primaryLight,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   uploadPlaceholderText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.primary,
   },
   uploadPlaceholderSub: {
-    fontSize: 11,
-    color: Colors.textMuted,
+    fontSize: 10,
+    color: '#94A3B8',
     marginTop: 2,
   },
-  bottomBar: {
-    backgroundColor: Colors.white,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
-  },
-  bottomBarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: Colors.white,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    gap: 6,
-  },
-  backBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.textSecondary,
-  },
-  submittingRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 52,
-    gap: 8,
-  },
-  submittingText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
   cardDatePickerSection: {
-    marginTop: 14,
-    paddingTop: 12,
+    marginTop: 10,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
@@ -1719,18 +1908,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   cardDatePickerHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   cardDatePickerLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
-    color: Colors.textSecondary,
-    textTransform: 'uppercase',
+    color: '#475569',
     letterSpacing: 0.5,
   },
   mandatoryPillSm: {
@@ -1738,7 +1926,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#DC2626',
     backgroundColor: '#FEF2F2',
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
     paddingVertical: 1.5,
     borderRadius: 4,
   },
@@ -1747,11 +1935,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    borderWidth: 1.5,
+    borderRadius: 10,
+    borderWidth: 1,
     borderColor: '#E2E8F0',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
   datePickerTriggerFilled: {
     backgroundColor: '#F0FDF4',
@@ -1764,123 +1952,168 @@ const styles = StyleSheet.create({
   datePickerTriggerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     flex: 1,
   },
   datePickerTriggerText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    color: '#0F172A',
   },
   datePickerTriggerPlaceholder: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
-    color: Colors.textPlaceholder,
+    color: '#94A3B8',
   },
   datePickerTriggerRight: {
-    marginLeft: 8,
+    marginLeft: 6,
   },
   dateSelectedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: Colors.successLight,
-    paddingHorizontal: 8,
-    paddingVertical: 3.5,
-    borderRadius: 8,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 6,
   },
   dateSelectedBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
     color: Colors.successDark,
   },
   datePickAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 8,
-    paddingVertical: 3.5,
-    borderRadius: 8,
+    gap: 3,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 6,
   },
   datePickActionText: {
-    fontSize: 11,
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  bottomBar: {
+    backgroundColor: Colors.white,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  bottomBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 4,
+  },
+  backBtnText: {
+    fontSize: 14,
     fontWeight: '700',
+    color: '#475569',
+  },
+  submittingRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+    gap: 8,
+  },
+  submittingText: {
+    fontSize: 13,
+    fontWeight: '600',
     color: Colors.primary,
   },
   successModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   successModalCard: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 380,
     backgroundColor: Colors.white,
-    borderRadius: 24,
-    padding: 24,
+    borderRadius: 20,
+    padding: 20,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   successIconCircleOuter: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: Colors.successLight,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#ECFDF5',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   successIconCircleInner: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: Colors.success,
     alignItems: 'center',
     justifyContent: 'center',
   },
   successModalTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.textPrimary,
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#0F172A',
     textAlign: 'center',
-    letterSpacing: -0.4,
-    marginBottom: 8,
+    letterSpacing: -0.3,
+    marginBottom: 6,
   },
   successModalSubtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
+    fontSize: 12.5,
+    color: '#64748B',
     textAlign: 'center',
-    lineHeight: 19,
-    marginBottom: 18,
-    paddingHorizontal: 10,
+    lineHeight: 18,
+    marginBottom: 16,
+    paddingHorizontal: 8,
   },
   successDriverCard: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   successDriverAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.borderLight,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E2E8F0',
   },
   successDriverName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
-    color: Colors.textPrimary,
+    color: '#0F172A',
   },
   successVehicleInfo: {
-    fontSize: 12,
-    color: Colors.textSecondary,
+    fontSize: 11.5,
+    color: '#64748B',
     marginTop: 2,
     fontWeight: '600',
   },
@@ -1888,10 +2121,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 4,
+    marginTop: 3,
   },
   verifiedTagText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: Colors.successDark,
   },
@@ -1901,11 +2134,11 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: '#FFFBEB',
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingVertical: 5,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#FDE68A',
-    marginBottom: 20,
+    marginBottom: 18,
   },
   welcomePillText: {
     fontSize: 11,
@@ -1915,13 +2148,13 @@ const styles = StyleSheet.create({
   goToHomeBtn: {
     width: '100%',
     backgroundColor: Colors.success,
-    borderRadius: 16,
-    paddingVertical: 15,
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   goToHomeBtnText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: Colors.white,
     letterSpacing: 0.2,

@@ -20,8 +20,8 @@ export const OnlineToggle: React.FC = () => {
   const isOnline = driver.online_status === 'ONLINE';
 
   const handleToggle = async () => {
-    // Verification Gate: unverified drivers cannot go online
-    if (!isVerified) {
+    // Only block if a document was explicitly rejected by Admin
+    if (verificationStatus === 'REJECTED') {
       playOfflineSound();
       setShowVerificationModal(true);
       return;

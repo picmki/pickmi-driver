@@ -32,6 +32,11 @@ export interface Driver {
   deposit_expires_at?: string;
   deposit_payment_id?: string;
   push_token?: string | null;
+  current_latitude?: number | null;
+  current_longitude?: number | null;
+  current_city?: string | null;
+  last_location_update?: string | null;
+  speed?: number | null;
   created_at: string;
 }
 

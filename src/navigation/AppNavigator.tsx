@@ -24,7 +24,6 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { NotificationScreen } from '../screens/NotificationScreen';
 import { NotificationBanner } from '../components/common/NotificationBanner';
 import { IncomingTripAlertModal } from '../components/trip/IncomingTripAlertModal';
-import { DevFloatingPanel } from '../components/dev/DevFloatingPanel';
 import { MandatoryPermissionGate } from '../components/common/MandatoryPermissionGate';
 
 export type TabType = 'home' | 'trips' | 'wallet' | 'profile' | 'notifications';
@@ -138,9 +137,6 @@ export const AppNavigator: React.FC = () => {
           rejectTrip(id);
         }}
       />
-
-      {/* Prototype Dev Panel for quick assignment & testing */}
-      {isLoggedIn && !isSplash && !isNewUser && <DevFloatingPanel />}
 
       {/* Mandatory Driver Permissions Gate (Blocks app until permissions are allowed) */}
       {!isSplash && <MandatoryPermissionGate />}

@@ -12,6 +12,7 @@ import {
 } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
 import { registerForRemotePushNotificationsAsync } from '../utils/pushNotifications';
+import { syncDriverLocationToSupabase } from '../utils/locationTracking';
 
 interface AuthContextType {
   driver: Driver;
@@ -74,7 +75,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isNewUser, setIsNewUser] = useState<boolean>(false);
-  const [pendingMobile, setPendingMobile] = useState<string>('+91 98765 43210');
+  const [pendingMobile, setPendingMobile] = useState<string>('');
 
   useEffect(() => {
     loadPersistedAuth();
@@ -156,6 +157,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!driver?.id) return;
 
+    // Fast periodic check every 5 seconds so verification changes appear immediately
+    const pollInterval = setInterval(() => {
+      refreshDriverProfile(driver.id);
+    }, 5000);
+
     const channelName = `driver_live_sync_${driver.id}_${Date.now()}`;
     const channel = supabase
       .channel(channelName)
@@ -165,11 +171,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           event: '*',
           schema: 'public',
           table: 'driver_documents',
-          filter: `driver_id=eq.${driver.id}`,
         },
-        () => {
-          console.log('⚡ Realtime: Document update from Admin detected!');
-          refreshDriverProfile(driver.id);
+        (payload: any) => {
+          const targetDriverId = payload.new?.driver_id || payload.old?.driver_id;
+          if (!targetDriverId || targetDriverId === driver.id) {
+            console.log('⚡ Realtime: Document update from Admin detected!');
+            refreshDriverProfile(driver.id);
+          }
         }
       )
       .on(
@@ -178,11 +186,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           event: '*',
           schema: 'public',
           table: 'drivers',
-          filter: `id=eq.${driver.id}`,
         },
-        () => {
-          console.log('⚡ Realtime: Driver status update from Admin detected!');
-          refreshDriverProfile(driver.id);
+        (payload: any) => {
+          const targetId = payload.new?.id || payload.old?.id;
+          if (!targetId || targetId === driver.id) {
+            console.log('⚡ Realtime: Driver status update from Admin detected!');
+            refreshDriverProfile(driver.id);
+          }
         }
       )
       .on(
@@ -191,16 +201,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           event: '*',
           schema: 'public',
           table: 'vehicles',
-          filter: `driver_id=eq.${driver.id}`,
         },
-        () => {
-          console.log('⚡ Realtime: Vehicle update from Admin detected!');
-          refreshDriverProfile(driver.id);
+        (payload: any) => {
+          const targetDriverId = payload.new?.driver_id || payload.old?.driver_id;
+          if (!targetDriverId || targetDriverId === driver.id) {
+            console.log('⚡ Realtime: Vehicle update from Admin detected!');
+            refreshDriverProfile(driver.id);
+          }
         }
       )
       .subscribe();
 
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
   }, [driver?.id]);
@@ -367,8 +380,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const rejectionReason = anyRejectedDoc?.rejection_reason || null;
 
   const toggleOnlineStatus = () => {
-    if (!isVerified) {
-      console.warn('Cannot toggle online: Driver documents are not verified yet');
+    if (anyRejectedDoc) {
+      console.warn('Cannot toggle online: Driver document was rejected by Admin');
       return;
     }
     setDriver((prev) => {
@@ -379,6 +392,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       updateDriverOnlineStatusInSupabase(prev.id, newStatus).catch(() => {});
       if (newStatus === 'ONLINE') {
         registerForRemotePushNotificationsAsync(prev.id).catch(() => {});
+        syncDriverLocationToSupabase(prev.id).catch(() => {});
       }
       return updated;
     });

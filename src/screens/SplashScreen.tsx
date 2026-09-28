@@ -47,7 +47,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0043DC" />
+      <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
       {/* Centered PickMi Logo Only */}
       <Animated.View
@@ -73,7 +73,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0043DC',
+    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
   },

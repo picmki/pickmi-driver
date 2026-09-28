@@ -8,7 +8,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { Colors, Shadows } from '../../theme/colors';
+import { Colors } from '../../theme/colors';
 
 interface LocationCoords {
   latitude: number;
@@ -290,25 +290,25 @@ export const FreeMapView: React.FC<FreeMapViewProps> = ({
         />
       )}
 
-      {/* Apple style Frosted Glass Floating GPS Controls */}
+      {/* Apple style Frosted Glass Floating GPS Controls (Flat, No Shadows) */}
       <View style={styles.floatingControls}>
         <TouchableOpacity
-          style={[styles.floatingButton, Shadows.md]}
+          style={styles.floatingButton}
           onPress={centerOnDriver}
-          activeOpacity={0.7}
+          activeOpacity={0.75}
           accessibilityLabel="Recenter on location"
         >
-          <Ionicons name="navigate" size={20} color={Colors.primary} />
+          <Ionicons name="navigate" size={18} color={Colors.primary} />
         </TouchableOpacity>
 
         {pickupCoords && dropCoords && (
           <TouchableOpacity
-            style={[styles.floatingButton, Shadows.md, { marginTop: 10 }]}
+            style={[styles.floatingButton, { marginTop: 8 }]}
             onPress={centerOnRoute}
-            activeOpacity={0.7}
+            activeOpacity={0.75}
             accessibilityLabel="Fit entire trip route"
           >
-            <Ionicons name="git-branch" size={20} color={Colors.primary} />
+            <Ionicons name="git-branch" size={18} color={Colors.primary} />
           </TouchableOpacity>
         )}
       </View>
@@ -334,13 +334,13 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   floatingButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.7)',
+    borderColor: '#E2E8F0',
   },
 });

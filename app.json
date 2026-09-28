@@ -11,7 +11,7 @@
     "primaryColor": "#0043DC",
     "splash": {
       "image": "./assets/pickmi_logo.png",
-      "backgroundColor": "#0043DC",
+      "backgroundColor": "#000000",
       "resizeMode": "contain"
     },
     "ios": {

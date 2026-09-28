@@ -79,12 +79,6 @@ export const OtpScreen: React.FC<OtpScreenProps> = ({
     }
   };
 
-  const fillDummyOtp = () => {
-    const dummy = ['1', '2', '3', '4', '5', '6'];
-    setOtpValues(dummy);
-    setErrorMessage('');
-    handleVerify('123456');
-  };
 
   const handleResend = () => {
     if (resendTimer === 0) {
@@ -161,19 +155,6 @@ export const OtpScreen: React.FC<OtpScreenProps> = ({
                 <Text style={styles.errorText}>{errorMessage}</Text>
               </View>
             ) : null}
-
-            {/* Development Mode Dummy OTP Helper */}
-            <TouchableOpacity
-              style={styles.devOtpBanner}
-              onPress={fillDummyOtp}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="key" size={16} color={Colors.primary} />
-              <Text style={styles.devOtpText}>
-                Dev Mode: Tap to Autofill OTP{' '}
-                <Text style={styles.devOtpCode}>123456</Text>
-              </Text>
-            </TouchableOpacity>
 
             {/* Resend OTP Row */}
             <View style={styles.resendRow}>
@@ -314,28 +295,6 @@ const styles = StyleSheet.create({
     color: Colors.danger,
     fontWeight: '600',
     marginLeft: 6,
-  },
-  devOtpBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  devOtpText: {
-    fontSize: 13,
-    color: Colors.textPrimary,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  devOtpCode: {
-    fontWeight: '900',
-    color: Colors.primary,
-    letterSpacing: 1,
   },
   resendRow: {
     flexDirection: 'row',

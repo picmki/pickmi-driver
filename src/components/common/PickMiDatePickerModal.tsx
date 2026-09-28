@@ -21,6 +21,7 @@ interface PickMiDatePickerModalProps {
   onClose: () => void;
   minYear?: number;
   maxYear?: number;
+  futureOnly?: boolean;
 }
 
 const MONTH_NAMES = [
@@ -42,10 +43,18 @@ export const PickMiDatePickerModal: React.FC<PickMiDatePickerModalProps> = ({
   initialDate,
   onConfirm,
   onClose,
-  minYear = 2024,
+  minYear = new Date().getFullYear(),
   maxYear = 2045,
+  futureOnly = true,
 }) => {
-  // Parse initial date
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth();
+
+  const effectiveMinYear = futureOnly ? Math.max(minYear, currentYear) : minYear;
+
+  // Parse initial date (clamp to future if futureOnly is true)
   const parseInitial = () => {
     if (initialDate) {
       const parts = initialDate.trim().split(' ');
@@ -54,23 +63,30 @@ export const PickMiDatePickerModal: React.FC<PickMiDatePickerModalProps> = ({
         const m = MONTH_NAMES.indexOf(parts[1]);
         const y = parseInt(parts[2], 10);
         if (!isNaN(d) && m !== -1 && !isNaN(y)) {
-          return { day: d, month: m, year: y };
+          const parsedCheck = new Date(y, m, d);
+          parsedCheck.setHours(0, 0, 0, 0);
+          if (!futureOnly || parsedCheck >= today) {
+            return { day: d, month: m, year: y };
+          }
         }
       }
       const parsed = new Date(initialDate);
       if (!isNaN(parsed.getTime())) {
-        return {
-          day: parsed.getDate(),
-          month: parsed.getMonth(),
-          year: parsed.getFullYear(),
-        };
+        parsed.setHours(0, 0, 0, 0);
+        if (!futureOnly || parsed >= today) {
+          return {
+            day: parsed.getDate(),
+            month: parsed.getMonth(),
+            year: parsed.getFullYear(),
+          };
+        }
       }
     }
-    const today = new Date();
+    // Default to 1 year in future
     return {
       day: today.getDate(),
       month: today.getMonth(),
-      year: today.getFullYear() + 1, // Default to next year for validity
+      year: currentYear + 1,
     };
   };
 
@@ -97,10 +113,15 @@ export const PickMiDatePickerModal: React.FC<PickMiDatePickerModalProps> = ({
   // Adjust day if selectedDay exceeds daysInMonth
   const safeDay = Math.min(selectedDay, daysInMonth);
 
+  const canGoPrevMonth = !futureOnly || !(selectedYear === currentYear && selectedMonth <= currentMonth);
+
   const handlePrevMonth = () => {
+    if (!canGoPrevMonth) return;
     if (selectedMonth === 0) {
-      setSelectedMonth(11);
-      setSelectedYear((prev) => Math.max(minYear, prev - 1));
+      if (selectedYear > effectiveMinYear) {
+        setSelectedMonth(11);
+        setSelectedYear((prev) => prev - 1);
+      }
     } else {
       setSelectedMonth((prev) => prev - 1);
     }
@@ -116,11 +137,15 @@ export const PickMiDatePickerModal: React.FC<PickMiDatePickerModalProps> = ({
   };
 
   const handleQuickAddYears = (yearsToAdd: number) => {
-    const currentYear = new Date().getFullYear();
     setSelectedYear(currentYear + yearsToAdd);
   };
 
   const handleConfirm = () => {
+    const chosen = new Date(selectedYear, selectedMonth, safeDay);
+    chosen.setHours(0, 0, 0, 0);
+    if (futureOnly && chosen < today) {
+      return;
+    }
     const dayStr = safeDay < 10 ? `0${safeDay}` : `${safeDay}`;
     const monthStr = MONTH_NAMES[selectedMonth];
     const formatted = `${dayStr} ${monthStr} ${selectedYear}`;
@@ -129,7 +154,7 @@ export const PickMiDatePickerModal: React.FC<PickMiDatePickerModalProps> = ({
   };
 
   const yearsList: number[] = [];
-  for (let y = minYear; y <= maxYear; y++) {
+  for (let y = effectiveMinYear; y <= maxYear; y++) {
     yearsList.push(y);
   }
 
@@ -245,10 +270,11 @@ export const PickMiDatePickerModal: React.FC<PickMiDatePickerModalProps> = ({
               {/* Month Navigation Row */}
               <View style={styles.monthNavRow}>
                 <TouchableOpacity
-                  style={styles.monthNavBtn}
+                  style={[styles.monthNavBtn, !canGoPrevMonth && { opacity: 0.3 }]}
                   onPress={handlePrevMonth}
+                  disabled={!canGoPrevMonth}
                 >
-                  <Ionicons name="chevron-back" size={18} color={Colors.textPrimary} />
+                  <Ionicons name="chevron-back" size={18} color={canGoPrevMonth ? Colors.textPrimary : '#94A3B8'} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -288,17 +314,29 @@ export const PickMiDatePickerModal: React.FC<PickMiDatePickerModalProps> = ({
                 {Array.from({ length: daysInMonth }).map((_, index) => {
                   const dayNum = index + 1;
                   const isSelected = dayNum === safeDay;
+                  const cellDate = new Date(selectedYear, selectedMonth, dayNum);
+                  cellDate.setHours(0, 0, 0, 0);
+                  const isPast = futureOnly && cellDate < today;
+
                   return (
                     <TouchableOpacity
                       key={`day-${dayNum}`}
-                      style={[styles.daySlot, isSelected && styles.daySlotSelected]}
-                      onPress={() => setSelectedDay(dayNum)}
+                      style={[
+                        styles.daySlot,
+                        isSelected && styles.daySlotSelected,
+                        isPast && { backgroundColor: '#F8FAFC', opacity: 0.35 },
+                      ]}
+                      onPress={() => {
+                        if (!isPast) setSelectedDay(dayNum);
+                      }}
+                      disabled={isPast}
                       activeOpacity={0.7}
                     >
                       <Text
                         style={[
                           styles.dayText,
                           isSelected && styles.dayTextSelected,
+                          isPast && { color: '#94A3B8' },
                         ]}
                       >
                         {dayNum}

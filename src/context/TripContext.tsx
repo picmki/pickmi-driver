@@ -179,45 +179,50 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
         // Add to state
         setTrips((prev) => [newTrip, ...prev.filter((t) => t.id !== newTrip.id)]);
 
-        // ── ONLINE / OFFLINE LOGIC ──────────────────────────────────────────
+        // ── ONLINE / OFFLINE & ASSIGNMENT LOGIC ─────────────────────────────
         const curDriver = driverRef.current;
         const isOnline = curDriver?.online_status === 'ONLINE';
+        const isDirectlyAssignedToMe = Boolean(
+          newTrip.assigned_driver_id &&
+          curDriver?.id &&
+          newTrip.assigned_driver_id === curDriver.id
+        );
 
-        // If driver is OFFLINE: DO NOT alert, do not play chime, do not show popup!
-        if (!isOnline) {
-          console.log('🔇 Driver is OFFLINE. Silently synced trip without disturbing driver.');
-          return;
-        }
-
-        // If trip is assigned to someone else, skip alert
+        // If trip is explicitly assigned to a DIFFERENT driver, skip alert
         if (newTrip.assigned_driver_id && curDriver?.id && newTrip.assigned_driver_id !== curDriver.id) {
           console.log('Trip assigned to different driver, skipping alert.');
           return;
         }
 
-        // ── STRICT DEDUPLICATION: PREVENT 3-5 DUPLICATE NOTIFICATIONS ───────
+        // If driver is OFFLINE and trip is not directly assigned to them: skip
+        if (!isOnline && !isDirectlyAssignedToMe) {
+          console.log('🔇 Driver is OFFLINE. Silently synced trip without disturbing driver.');
+          return;
+        }
+
+        // ── STRICT DEDUPLICATION: PREVENT DUPLICATE NOTIFICATIONS ───────
         if (notifiedTripIdsRef.current.has(tripId)) {
           console.log('🔇 Trip already notified once. Skipping duplicate notification:', tripId);
           return;
         }
         notifiedTripIdsRef.current.add(tripId);
 
-        // 1. Play audible 4-note bell chime & haptic feedback ONCE
+        // 1. Play audible 4-note bell chime & haptic feedback
         playNewTripSound();
 
-        // 2. Trigger In-App Notification Banner Toast ONCE
+        // 2. Trigger In-App Notification Banner Toast
         const pickupShort = (newTrip.pickup_location || 'Pickup').split(',')[0];
         const dropShort = (newTrip.drop_location || 'Drop').split(',')[0];
         showToast(
-          '🚨 New Trip Dispatched!',
+          isDirectlyAssignedToMe ? '🚨 Trip Assigned to You!' : '🚨 New Trip Dispatched!',
           `Trip ${newTrip.trip_number} • ₹${newTrip.fare} • ${pickupShort} → ${dropShort}`,
-          newTrip.status === 'ASSIGNED' ? 'trip_assigned' : 'trip_available',
+          isDirectlyAssignedToMe ? 'trip_assigned' : 'trip_available',
           newTrip.id
         );
 
-        // 3. Trigger Native / OS Push Notification ONCE
+        // 3. Trigger Native / OS Push Notification
         triggerPushNotification(
-          '🚨 New Trip Received! - PickMi Driver',
+          isDirectlyAssignedToMe ? '🚨 Trip Assigned to You! - PickMi' : '🚨 New Trip Received! - PickMi Driver',
           `Trip ${newTrip.trip_number} (₹${newTrip.fare})\nFrom: ${pickupShort}\nTo: ${dropShort}`,
           { tripId: newTrip.id, fare: newTrip.fare }
         );
@@ -246,15 +251,64 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
 
         if (raw.status === 'ASSIGNED') {
           const curDriver = driverRef.current;
-          if (raw.assigned_driver_id === curDriver?.id && !notifiedTripIdsRef.current.has(raw.id)) {
-            notifiedTripIdsRef.current.add(raw.id);
+          const isAssignedToMe = Boolean(raw.assigned_driver_id && curDriver?.id && raw.assigned_driver_id === curDriver.id);
+          const assignmentKey = `assigned_${raw.id}_${raw.assigned_driver_id}`;
+
+          if (isAssignedToMe && !notifiedTripIdsRef.current.has(assignmentKey)) {
+            notifiedTripIdsRef.current.add(assignmentKey);
+
             playNewTripSound();
+
+            const pickupShort = (raw.pickup_location || 'Pickup').split(',')[0];
+            const dropShort = (raw.drop_location || 'Drop').split(',')[0];
+
             showToast(
-              'Trip Assigned',
-              `Trip ${raw.trip_number || ''} has been assigned to you.`,
+              '🚨 Trip Assigned to You!',
+              `Trip ${raw.trip_number || ''} • ₹${raw.fare || 500} • ${pickupShort} → ${dropShort}`,
               'trip_assigned',
               raw.id
             );
+
+            triggerPushNotification(
+              '🚨 Trip Assigned to You! - PickMi Driver',
+              `Trip ${raw.trip_number || ''} (₹${raw.fare || 500})\nFrom: ${pickupShort}\nTo: ${dropShort}`,
+              { tripId: raw.id, fare: raw.fare }
+            );
+
+            // Construct full Trip and mount incoming trip sheet
+            const fullTrip: Trip = {
+              id: raw.id,
+              trip_number: raw.trip_number || `#PM${raw.id.substring(0, 5)}`,
+              customer_name: raw.customer_name || 'Passenger',
+              customer_phone: raw.customer_phone || '+91 98450 12345',
+              pickup_location: raw.pickup_location || 'Pickup',
+              pickup_latitude: Number(raw.pickup_latitude) || 12.9716,
+              pickup_longitude: Number(raw.pickup_longitude) || 77.5946,
+              drop_location: raw.drop_location || 'Drop',
+              drop_latitude: Number(raw.drop_latitude) || 12.9279,
+              drop_longitude: Number(raw.drop_longitude) || 77.6271,
+              fare: Number(raw.fare) || 500,
+              distance: raw.distance || '15 km',
+              vehicle_type: raw.vehicle_type || 'Sedan',
+              trip_type: raw.trip_type || 'One-way',
+              status: 'ASSIGNED',
+              assigned_driver_id: raw.assigned_driver_id,
+              otp: raw.otp || '4821',
+              pickup_date: raw.pickup_date || 'Today',
+              pickup_time: raw.pickup_time || 'Just now',
+              payment_method: raw.payment_method || 'Cash',
+              toll_charges: Number(raw.toll_charges) || 0,
+              parking_charges: Number(raw.parking_charges) || 0,
+              extra_km_rate: Number(raw.extra_km_rate) || 12,
+              allowed_km: Number(raw.allowed_km) || 50,
+              cash_to_collect: raw.cash_to_collect ? Number(raw.cash_to_collect) : Number(raw.fare) || 500,
+              toll_included: raw.toll_included || 'INCLUDED',
+              permit_included: raw.permit_included || 'EXCLUDED',
+              batta_included: raw.batta_included || 'INCLUDED',
+              hill_charges_applicable: raw.hill_charges_applicable || 'NOT_APPLICABLE',
+              created_at: raw.created_at || new Date().toISOString(),
+            };
+            setIncomingAlertTrip(fullTrip);
           }
         } else if (raw.status === 'CANCELLED') {
           showToast(
@@ -264,6 +318,14 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
             raw.id
           );
           setIncomingAlertTrip((current) => (current?.id === raw.id ? null : current));
+        }
+      } else if (payload.eventType === 'DELETE') {
+        const deletedId = payload.old?.id;
+        if (deletedId) {
+          console.log('🗑️ Realtime: Trip deleted from Admin:', deletedId);
+          setTrips((prev) => prev.filter((t) => t.id !== deletedId));
+          setIncomingAlertTrip((current) => (current?.id === deletedId ? null : current));
+          setSelectedTripForDetails((current) => (current?.id === deletedId ? null : current));
         }
       }
     });

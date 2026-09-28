@@ -55,6 +55,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   const currentSheetTrip = selectedActiveTrip || activeTrip || (activeTrips && activeTrips[0]) || null;
 
+  // Auto-prompt driver immediately if admin rejected a document
+  React.useEffect(() => {
+    if (verificationStatus === 'REJECTED') {
+      setShowVerificationModal(true);
+    }
+  }, [verificationStatus]);
+
   return (
     <View style={styles.container}>
       {/* Apple Style Top Header without bottom line and without avatar */}
@@ -67,60 +74,76 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       >
         {/* Compliance Verification Banner if unverified */}
         {!isVerified && (
-          <TouchableOpacity
+          <View
             style={[
               styles.verificationBanner,
               verificationStatus === 'REJECTED'
                 ? styles.bannerDanger
                 : styles.bannerWarning,
             ]}
-            onPress={() => setShowVerificationModal(true)}
-            activeOpacity={0.88}
           >
-            <View
-              style={[
-                styles.bannerIconBox,
-                verificationStatus === 'REJECTED'
-                  ? styles.bannerIconDanger
-                  : styles.bannerIconWarning,
-              ]}
+            <TouchableOpacity
+              style={styles.bannerHeaderRow}
+              onPress={() => setShowVerificationModal(true)}
+              activeOpacity={0.88}
             >
-              <Ionicons
-                name={
-                  verificationStatus === 'REJECTED'
-                    ? 'alert-circle'
-                    : 'hourglass-outline'
-                }
-                size={20}
-                color={
-                  verificationStatus === 'REJECTED' ? '#DC2626' : '#D97706'
-                }
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text
+              <View
                 style={[
-                  styles.bannerTitle,
-                  {
-                    color:
-                      verificationStatus === 'REJECTED'
-                        ? '#B91C1C'
-                        : '#92400E',
-                  },
+                  styles.bannerIconBox,
+                  verificationStatus === 'REJECTED'
+                    ? styles.bannerIconDanger
+                    : styles.bannerIconWarning,
                 ]}
               >
-                {verificationStatus === 'REJECTED'
-                  ? 'Document Action Required'
-                  : 'Document & Vehicle Under Review'}
-              </Text>
-              <Text style={styles.bannerSubtitle}>
-                {verificationStatus === 'REJECTED'
-                  ? rejectionReason || 'Tap to inspect rejected document details'
-                  : `${verifiedDocsCount}/${totalDocsCount} approved • Tap to view compliance checklist`}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
-          </TouchableOpacity>
+                <Ionicons
+                  name={
+                    verificationStatus === 'REJECTED'
+                      ? 'alert-circle'
+                      : 'hourglass-outline'
+                  }
+                  size={20}
+                  color={
+                    verificationStatus === 'REJECTED' ? '#DC2626' : '#D97706'
+                  }
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.bannerTitle,
+                    {
+                      color:
+                        verificationStatus === 'REJECTED'
+                          ? '#B91C1C'
+                          : '#92400E',
+                    },
+                  ]}
+                >
+                  {verificationStatus === 'REJECTED'
+                    ? '🚨 Document Rejected by Admin'
+                    : 'Document & Vehicle Under Review'}
+                </Text>
+                <Text style={styles.bannerSubtitle}>
+                  {verificationStatus === 'REJECTED'
+                    ? rejectionReason || 'Action required before taking trips'
+                    : `${verifiedDocsCount}/${totalDocsCount} approved • Tap to view checklist`}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+
+            {verificationStatus === 'REJECTED' && (
+              <TouchableOpacity
+                style={styles.bannerReuploadBtn}
+                onPress={() => setShowVerificationModal(true)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="camera" size={15} color="#FFFFFF" />
+                <Text style={styles.bannerReuploadBtnText}>Re-upload Document to Continue</Text>
+                <Ionicons name="arrow-forward" size={14} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         {/* Effective Apple Style Online / Offline Status Card */}
@@ -420,11 +443,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#0043DC',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#0043DC',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   countBubbleEmpty: {
     backgroundColor: '#F1F5F9',
@@ -490,6 +508,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748B',
     marginTop: 1,
+  },
+  bannerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  bannerReuploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#DC2626',
+    borderRadius: 12,
+    paddingVertical: 10,
+    marginTop: 10,
+  },
+  bannerReuploadBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
 

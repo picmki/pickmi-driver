@@ -73,6 +73,13 @@ CREATE TABLE IF NOT EXISTS public.drivers (
 
 -- Migration safety for existing installations
 ALTER TABLE public.drivers ADD COLUMN IF NOT EXISTS push_token TEXT;
+ALTER TABLE public.drivers ADD COLUMN IF NOT EXISTS current_latitude NUMERIC(10, 7);
+ALTER TABLE public.drivers ADD COLUMN IF NOT EXISTS current_longitude NUMERIC(10, 7);
+ALTER TABLE public.drivers ADD COLUMN IF NOT EXISTS current_city TEXT;
+ALTER TABLE public.drivers ADD COLUMN IF NOT EXISTS last_location_update TIMESTAMPTZ;
+ALTER TABLE public.drivers ADD COLUMN IF NOT EXISTS speed NUMERIC(6, 2);
+ALTER TABLE public.drivers ADD COLUMN IF NOT EXISTS heading NUMERIC(6, 2);
+ALTER TABLE public.drivers ADD COLUMN IF NOT EXISTS battery_level INTEGER;
 
 -- TABLE: vehicles
 CREATE TABLE IF NOT EXISTS public.vehicles (
