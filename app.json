@@ -23,6 +23,7 @@
     },
     "android": {
       "package": "com.pickmi.driver",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#0043DC",
         "foregroundImage": "./assets/driver_icon_foreground.png"
@@ -32,6 +33,8 @@
         "ACCESS_FINE_LOCATION",
         "POST_NOTIFICATIONS",
         "VIBRATE",
+        "WAKE_LOCK",
+        "RECEIVE_BOOT_COMPLETED",
         "SYSTEM_ALERT_WINDOW",
         "USE_FULL_SCREEN_INTENT",
         "FOREGROUND_SERVICE"

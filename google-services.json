@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "812782936180",
+    "project_id": "pickmi-drvier",
+    "storage_bucket": "pickmi-drvier.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:812782936180:android:756818da93a63c02fa3121",
+        "android_client_info": {
+          "package_name": "com.pickmi.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZYEYdx8HjLcYmpE7sZIDllQT-YaTUwfw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:812782936180:android:6b0d1fcc3026d9f4fa3121",
+        "android_client_info": {
+          "package_name": "pickmi.drvier"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZYEYdx8HjLcYmpE7sZIDllQT-YaTUwfw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
