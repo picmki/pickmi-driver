@@ -40,9 +40,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onContinue }) => {
     setIsLoading(true);
 
     const fullMobile = `${countryCode} ${phoneNumber.trim()}`;
-    await sendOtp(fullMobile);
+    const res = await sendOtp(fullMobile);
     setIsLoading(false);
-    onContinue();
+
+    if (res.success) {
+      onContinue();
+    } else {
+      setErrorMsg(res.message || 'Failed to send OTP. Please check your mobile number.');
+    }
   };
 
   return (

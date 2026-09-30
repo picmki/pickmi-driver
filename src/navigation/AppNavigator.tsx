@@ -6,9 +6,9 @@ import {
   TouchableOpacity,
   Platform,
   useWindowDimensions,
-  SafeAreaView,
   StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Shadows } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
@@ -31,8 +31,17 @@ export type AuthScreenType = 'login' | 'otp';
 
 export const AppNavigator: React.FC = () => {
   const { isLoggedIn, isLoading, isNewUser, completeProfileSetup } = useAuth();
-  const { availableTrips, assignedTrips, incomingAlertTrip, acceptTrip, rejectTrip } = useTrips();
+  const {
+    availableTrips,
+    assignedTrips,
+    incomingAlertTrip,
+    isAcceptingIncoming,
+    unavailableTripError,
+    acceptTrip,
+    rejectTrip,
+  } = useTrips();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   // Navigation state
   const [isSplash, setIsSplash] = useState(true);
@@ -129,12 +138,16 @@ export const AppNavigator: React.FC = () => {
       {/* Real-time Incoming Trip Alert Modal (Pop up on new dispatch) */}
       <IncomingTripAlertModal
         trip={incomingAlertTrip}
-        onAccept={(id) => {
-          acceptTrip(id);
-          setActiveTab('home');
+        isAccepting={isAcceptingIncoming}
+        unavailableError={unavailableTripError}
+        onAccept={async (id) => {
+          const success = await acceptTrip(id);
+          if (success) {
+            setActiveTab("home");
+          }
         }}
-        onDecline={(id) => {
-          rejectTrip(id);
+        onDecline={(id, reason) => {
+          rejectTrip(id, reason);
         }}
       />
 
@@ -146,7 +159,13 @@ export const AppNavigator: React.FC = () => {
 
       {/* Bottom Tab Bar — hidden on notifications screen */}
       {isLoggedIn && !isSplash && !isNewUser && activeTab !== 'notifications' && (
-        <View style={[styles.bottomTabBar, Shadows.bottomSheet]}>
+        <View
+          style={[
+            styles.bottomTabBar,
+            Shadows.bottomSheet,
+            { paddingBottom: Math.max(insets.bottom, 6), height: 60 + Math.max(insets.bottom, 6) },
+          ]}
+        >
           {/* Home Tab */}
           <TouchableOpacity
             style={styles.tabButton}
@@ -280,7 +299,7 @@ export const AppNavigator: React.FC = () => {
     );
   }
 
-  return <SafeAreaView style={styles.safeAreaContainer}>{appContent}</SafeAreaView>;
+  return <View style={styles.safeAreaContainer}>{appContent}</View>;
 };
 
 const styles = StyleSheet.create({

@@ -18,6 +18,7 @@ import { DriverVerificationModal } from '../components/compliance/DriverVerifica
 import { useTrips } from '../context/TripContext';
 import { useAuth } from '../context/AuthContext';
 import { Trip } from '../types/database';
+import { getTripRouteTitle } from '../utils/routeFormatting';
 
 export const NewTripsScreen: React.FC = () => {
   const {
@@ -198,7 +199,7 @@ export const NewTripsScreen: React.FC = () => {
                 Are you sure you want to request this trip?
               </Text>
               <Text style={styles.dialogTripRoute}>
-                {tripToConfirm.pickup_location.split(',')[0]} → {tripToConfirm.drop_location.split(',')[0]}
+                {getTripRouteTitle(tripToConfirm.pickup_location, tripToConfirm.drop_location)}
               </Text>
               <Text style={styles.dialogFare}>₹{tripToConfirm.fare.toLocaleString('en-IN')}</Text>
 

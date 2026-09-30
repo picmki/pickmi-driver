@@ -13,6 +13,7 @@ import { Trip } from '../../types/database';
 import { Colors, Shadows } from '../../theme/colors';
 import { PickMiButton } from '../common/PickMiButton';
 import { FreeMapView } from '../map/FreeMapView';
+import { getTripRouteTitle } from '../../utils/routeFormatting';
 
 interface TripDetailsModalProps {
   trip: Trip | null;
@@ -152,7 +153,9 @@ export const TripDetailsModal: React.FC<TripDetailsModalProps> = ({
             <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Trip Details</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {getTripRouteTitle(trip.pickup_location, trip.drop_location)}
+            </Text>
             <Text style={styles.tripIdText}>{trip.trip_number}</Text>
           </View>
           <View style={styles.statusBadge}>
@@ -589,7 +592,7 @@ export const TripDetailsModal: React.FC<TripDetailsModalProps> = ({
                 Are you sure you want to request this trip?
               </Text>
               <Text style={styles.dialogTripRoute}>
-                {trip.pickup_location.split(',')[0]} → {trip.drop_location.split(',')[0]}
+                {getTripRouteTitle(trip.pickup_location, trip.drop_location)}
               </Text>
 
               <View style={styles.dialogBtnRow}>

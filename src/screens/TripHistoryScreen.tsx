@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Trip } from '../types/database';
 import { Colors, Shadows } from '../theme/colors';
 import { PickMiButton } from '../components/common/PickMiButton';
+import { getTripRouteTitle } from '../utils/routeFormatting';
 
 interface TripHistoryScreenProps {
   trips: Trip[];
@@ -42,7 +43,9 @@ export const TripHistoryScreen: React.FC<TripHistoryScreenProps> = ({ trips, onB
             <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Trip Details & Bill</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {getTripRouteTitle(selectedTrip.pickup_location, selectedTrip.drop_location)}
+            </Text>
             <Text style={styles.headerSubtitle}>{selectedTrip.trip_number} • Completed</Text>
           </View>
           <View style={styles.statusPill}>
@@ -263,6 +266,14 @@ export const TripHistoryScreen: React.FC<TripHistoryScreenProps> = ({ trips, onB
                         <Text style={styles.statusPillSmallText}>Completed</Text>
                       </View>
                     </View>
+                  </View>
+
+                  {/* Route City Title */}
+                  <View style={styles.routeHeaderRow}>
+                    <Ionicons name="navigate-circle" size={15} color={Colors.primary} />
+                    <Text style={styles.routeHeaderTitle} numberOfLines={1}>
+                      {getTripRouteTitle(item.pickup_location, item.drop_location)}
+                    </Text>
                   </View>
 
                   {/* Customer name (no phone number) */}
@@ -486,6 +497,23 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: Colors.successDark,
+  },
+  routeHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    marginBottom: 2,
+    backgroundColor: Colors.primary + '12',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  routeHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
+    flex: 1,
   },
   tripCustomerRow: {
     flexDirection: 'row',

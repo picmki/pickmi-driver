@@ -37,7 +37,9 @@
         "RECEIVE_BOOT_COMPLETED",
         "SYSTEM_ALERT_WINDOW",
         "USE_FULL_SCREEN_INTENT",
-        "FOREGROUND_SERVICE"
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "FOREGROUND_SERVICE_DATA_SYNC"
       ],
       "predictiveBackGestureEnabled": false,
       "intentFilters": [

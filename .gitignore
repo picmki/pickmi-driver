@@ -41,3 +41,4 @@ firebase-service-account.json
 # generated native folders
 /ios
 /android
+*.apk

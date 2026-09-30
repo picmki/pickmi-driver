@@ -112,7 +112,9 @@ export async function updateDriverPushTokenInSupabase(driverId: string, pushToke
 export async function updateDriverDepositInSupabase(
   driverId: string,
   status: 'PAID' | 'PENDING',
-  paymentId?: string
+  paymentId?: string,
+  amount: number = 250,
+  driverFallback?: Driver
 ): Promise<boolean> {
   if (!isSupabaseConfigured()) return false;
   const isPaid = status === 'PAID';
@@ -121,18 +123,36 @@ export async function updateDriverDepositInSupabase(
   nextYear.setFullYear(now.getFullYear() + 1);
 
   try {
-    const { error } = await supabase
+    const updatePayload = {
+      deposit_status: status,
+      deposit_amount: amount,
+      deposit_paid_at: isPaid ? now.toISOString() : null,
+      deposit_expires_at: isPaid ? nextYear.toISOString() : null,
+      deposit_payment_id: isPaid ? (paymentId || null) : null,
+      updated_at: now.toISOString(),
+    };
+
+    const { data, error } = await supabase
       .from('drivers')
-      .update({
-        deposit_status: status,
-        deposit_paid_at: isPaid ? now.toISOString() : null,
-        deposit_expires_at: isPaid ? nextYear.toISOString() : null,
-        deposit_payment_id: isPaid ? paymentId : null,
-        updated_at: now.toISOString(),
-      })
-      .eq('id', driverId);
+      .update(updatePayload)
+      .eq('id', driverId)
+      .select();
+
+    if (error) {
+      console.warn('Supabase updateDriverDepositInSupabase update error:', error.message);
+    }
+
+    // If no row was matched or updated, insert/upsert using driverFallback
+    if ((!data || data.length === 0) && driverFallback) {
+      await upsertDriverProfile({
+        ...driverFallback,
+        ...updatePayload,
+      });
+    }
+
     return !error;
-  } catch {
+  } catch (err) {
+    console.warn('Supabase updateDriverDepositInSupabase exception:', err);
     return false;
   }
 }
@@ -285,7 +305,8 @@ export async function requestTripInSupabase(tripId: string, driverId: string): P
       .update({ status: 'REQUESTED', updated_at: new Date().toISOString() })
       .eq('id', tripId);
 
-    // 2. Insert into trip_requests
+    // 2. Clean up any existing request for this driver and trip, then insert fresh request
+    await supabase.from('trip_requests').delete().eq('trip_id', tripId).eq('driver_id', driverId);
     const { error: reqError } = await supabase.from('trip_requests').insert({
       id: `req_${Date.now()}`,
       trip_id: tripId,
@@ -313,13 +334,18 @@ export async function updateTripStatusInSupabase(
   if (!isSupabaseConfigured()) return false;
 
   try {
+    const updatePayload: Record<string, any> = {
+      status,
+      ...extraData,
+      updated_at: new Date().toISOString(),
+    };
+    if (status === 'COMPLETED' && !extraData?.completed_at) {
+      updatePayload.completed_at = new Date().toISOString();
+    }
+
     const { error } = await supabase
       .from('trips')
-      .update({
-        status,
-        ...extraData,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', tripId);
 
     if (error) {
@@ -403,4 +429,106 @@ export function subscribeToDriverRealtime(driverId: string, onPayload: (payload:
   return () => {
     supabase.removeChannel(channel);
   };
+}
+
+// ─── 6. Concurrent Safe Trip Assignment & Decline ───────────────────────────
+export async function acceptTripInSupabase(
+  tripId: string,
+  driverId: string
+): Promise<{ success: boolean; reason?: "ALREADY_TAKEN" | "EXPIRED" | "ERROR" }> {
+  if (!isSupabaseConfigured()) {
+    return { success: true };
+  }
+
+  try {
+    // 1. Verify trip is still eligible
+    const { data: currentTrip, error: fetchErr } = await supabase
+      .from("trips")
+      .select("id, status, assigned_driver_id")
+      .eq("id", tripId)
+      .maybeSingle();
+
+    if (fetchErr || !currentTrip) {
+      console.warn("acceptTripInSupabase fetch error:", fetchErr?.message);
+      return { success: false, reason: "ERROR" };
+    }
+
+    // Check if status is no longer offerable or another driver is assigned
+    if (
+      currentTrip.status !== "AVAILABLE" &&
+      currentTrip.status !== "ASSIGNED" &&
+      currentTrip.status !== "REQUESTED"
+    ) {
+      return { success: false, reason: "ALREADY_TAKEN" };
+    }
+
+    if (
+      currentTrip.assigned_driver_id &&
+      currentTrip.assigned_driver_id !== driverId
+    ) {
+      return { success: false, reason: "ALREADY_TAKEN" };
+    }
+
+    // 2. Atomic conditional update: only update if still available
+    const { data: updated, error: updateErr } = await supabase
+      .from("trips")
+      .update({
+        status: "ON_THE_WAY",
+        assigned_driver_id: driverId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", tripId)
+      .in("status", ["AVAILABLE", "ASSIGNED", "REQUESTED"])
+      .select();
+
+    if (updateErr) {
+      console.warn("acceptTripInSupabase update error:", updateErr.message);
+      return { success: false, reason: "ERROR" };
+    }
+
+    if (!updated || updated.length === 0) {
+      return { success: false, reason: "ALREADY_TAKEN" };
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.warn("acceptTripInSupabase exception:", err);
+    return { success: false, reason: "ERROR" };
+  }
+}
+
+export async function declineTripInSupabase(
+  tripId: string,
+  driverId: string
+): Promise<boolean> {
+  if (!isSupabaseConfigured()) return true;
+
+  try {
+    // Record rejection in trip_requests table
+    await supabase.from("trip_requests").upsert({
+      id: `req_${tripId}_${driverId}`,
+      trip_id: tripId,
+      driver_id: driverId,
+      status: "REJECTED",
+      requested_at: new Date().toISOString(),
+    });
+    return true;
+  } catch (err) {
+    console.warn("declineTripInSupabase error:", err);
+    return false;
+  }
+}
+
+export async function updateDriverHeartbeatInSupabase(
+  driverId: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await supabase
+      .from("drivers")
+      .update({
+        last_location_update: new Date().toISOString(),
+      })
+      .eq("id", driverId);
+  } catch {}
 }

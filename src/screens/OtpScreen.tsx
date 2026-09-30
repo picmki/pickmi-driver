@@ -24,10 +24,12 @@ export const OtpScreen: React.FC<OtpScreenProps> = ({
   onSuccess,
   onChangeNumber,
 }) => {
-  const { pendingMobile, verifyOtp } = useAuth();
+  const { pendingMobile, verifyOtp, sendOtp } = useAuth();
   const [otpValues, setOtpValues] = useState<string[]>(['', '', '', '', '', '']);
   const [errorMessage, setErrorMessage] = useState('');
+  const [resendStatusMsg, setResendStatusMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [resendTimer, setResendTimer] = useState(30);
 
   const inputRefs = useRef<(TextInput | null)[]>([]);
@@ -44,6 +46,7 @@ export const OtpScreen: React.FC<OtpScreenProps> = ({
 
   const handleOtpChange = (value: string, index: number) => {
     if (errorMessage) setErrorMessage('');
+    if (resendStatusMsg) setResendStatusMsg('');
     const newOtp = [...otpValues];
     newOtp[index] = value;
     setOtpValues(newOtp);
@@ -79,11 +82,19 @@ export const OtpScreen: React.FC<OtpScreenProps> = ({
     }
   };
 
-
-  const handleResend = () => {
-    if (resendTimer === 0) {
-      setResendTimer(30);
+  const handleResend = async () => {
+    if (resendTimer === 0 && !resending) {
+      setResending(true);
       setErrorMessage('');
+      setResendStatusMsg('');
+      const res = await sendOtp(pendingMobile);
+      setResending(false);
+      if (res.success) {
+        setResendTimer(30);
+        setResendStatusMsg(res.message || 'New OTP sent via SMS!');
+      } else {
+        setErrorMessage(res.message || 'Failed to resend OTP.');
+      }
     }
   };
 
@@ -153,6 +164,13 @@ export const OtpScreen: React.FC<OtpScreenProps> = ({
               <View style={styles.errorContainer}>
                 <Ionicons name="alert-circle" size={16} color={Colors.danger} />
                 <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            ) : null}
+
+            {resendStatusMsg ? (
+              <View style={styles.successContainer}>
+                <Ionicons name="checkmark-circle" size={16} color={Colors.successDark} />
+                <Text style={styles.successText}>{resendStatusMsg}</Text>
               </View>
             ) : null}
 
@@ -294,6 +312,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.danger,
     fontWeight: '600',
+    marginLeft: 6,
+  },
+  successContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  successText: {
+    fontSize: 13,
+    color: Colors.successDark,
+    fontWeight: '700',
     marginLeft: 6,
   },
   resendRow: {

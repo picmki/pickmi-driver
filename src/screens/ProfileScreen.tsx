@@ -9,7 +9,10 @@ import {
   Switch,
   Modal,
   Alert,
+  Platform,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Shadows } from '../theme/colors';
 import { PickMiButton } from '../components/common/PickMiButton';
@@ -40,7 +43,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onLogoutSuccess })
   const [showDepositModal, setShowDepositModal] = useState(false);
   const isDepositPaid = driver.deposit_status === 'PAID';
 
-  const formatDepositExpiry = (isoString?: string) => {
+  const formatDepositExpiry = (isoString?: string | null) => {
     if (!isoString) return '1 Year';
     try {
       const d = new Date(isoString);
@@ -84,10 +87,16 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onLogoutSuccess })
     }, 280);
   };
 
+  const insets = useSafeAreaInsets();
+  const topPadding = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 20
+  );
+
   return (
     <View style={styles.container}>
       {/* FIXED TOP PROFILE HERO CARD (stays fixed when scrolling as requested) */}
-      <View style={[styles.fixedProfileHero, Shadows.sm]}>
+      <View style={[styles.fixedProfileHero, Shadows.sm, { paddingTop: topPadding + 6 }]}>
         <View style={styles.avatarRow}>
           <View style={styles.avatarWrapper}>
             <Image source={{ uri: driver.profile_image }} style={styles.avatar} />

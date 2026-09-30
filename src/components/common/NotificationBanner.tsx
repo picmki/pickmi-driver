@@ -1,11 +1,16 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Platform, StatusBar } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNotifications } from '../../context/NotificationContext';
 import { Colors, Shadows } from '../../theme/colors';
 
 export const NotificationBanner: React.FC = () => {
   const { currentBanner, dismissBanner } = useNotifications();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 20
+  );
 
   if (!currentBanner) return null;
 
@@ -40,7 +45,7 @@ export const NotificationBanner: React.FC = () => {
   };
 
   return (
-    <View style={styles.outerContainer} pointerEvents="box-none">
+    <View style={[styles.outerContainer, { top: topInset + 10 }]} pointerEvents="box-none">
       <View
         style={[
           styles.banner,

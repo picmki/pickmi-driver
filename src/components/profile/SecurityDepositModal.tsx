@@ -27,7 +27,7 @@ export const SecurityDepositModal: React.FC<SecurityDepositModalProps> = ({
 
   const isPaid = driver.deposit_status === 'PAID';
 
-  const formatDate = (isoString?: string) => {
+  const formatDate = (isoString?: string | null) => {
     if (!isoString) return '—';
     try {
       const d = new Date(isoString);

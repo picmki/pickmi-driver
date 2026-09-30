@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { AppNotification } from '../types/database';
 import { INITIAL_NOTIFICATIONS } from '../data/mockData';
-import { triggerPushNotification } from '../utils/pushNotifications';
+
 
 interface NotificationContextType {
   notifications: AppNotification[];
@@ -42,9 +42,6 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
     setNotifications((prev) => [newNotif, ...prev]);
     setCurrentBanner(newNotif);
-
-    // Trigger system push notification (Web / OS)
-    triggerPushNotification(title, message, { tripId, type });
 
     // Auto dismiss banner after 6 seconds
     setTimeout(() => {

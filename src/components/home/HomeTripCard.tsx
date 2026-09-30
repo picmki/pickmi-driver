@@ -15,6 +15,7 @@ import { useTrips } from '../../context/TripContext';
 import { PickMiButton } from '../common/PickMiButton';
 import { Trip } from '../../types/database';
 import { DistanceAndKmLimitCard } from '../trip/DistanceAndKmLimitCard';
+import { getTripRouteTitle } from '../../utils/routeFormatting';
 
 interface HomeTripCardProps {
   onViewTrip: (trip?: Trip) => void;
@@ -93,6 +94,13 @@ export const HomeTripCard: React.FC<HomeTripCardProps> = ({ onViewTrip }) => {
             </Text>
           </View>
           <Text style={styles.tripId}>{trip.trip_number}</Text>
+        </View>
+
+        {/* City Route Title */}
+        <View style={styles.routeTitleRow}>
+          <Text style={styles.routeTitleText} numberOfLines={1}>
+            {getTripRouteTitle(trip.pickup_location, trip.drop_location)}
+          </Text>
         </View>
 
         {/* Route Timeline */}
@@ -311,7 +319,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  routeTitleRow: {
     marginBottom: 12,
+  },
+  routeTitleText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    letterSpacing: -0.3,
   },
   badge: {
     flexDirection: 'row',

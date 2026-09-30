@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Driver, Vehicle, DriverDocument, OnlineStatus } from '../types/database';
 import { INITIAL_DRIVER, INITIAL_VEHICLE, INITIAL_DOCUMENTS } from '../data/mockData';
@@ -9,10 +10,19 @@ import {
   syncDriverDocuments,
   updateDriverOnlineStatusInSupabase,
   updateDriverDepositInSupabase,
+  updateDriverHeartbeatInSupabase,
 } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
-import { registerForRemotePushNotificationsAsync } from '../utils/pushNotifications';
+import {
+  registerForRemotePushNotificationsAsync,
+  showOnlineSearchingNotification,
+  hideOnlineSearchingNotification,
+} from '../utils/pushNotifications';
 import { syncDriverLocationToSupabase } from '../utils/locationTracking';
+import {
+  sendOtpVia2Factor,
+  verifyOtpVia2Factor,
+} from '../services/twoFactorService';
 
 interface AuthContextType {
   driver: Driver;
@@ -23,7 +33,7 @@ interface AuthContextType {
   isNewUser: boolean;
   pendingMobile: string;
   setPendingMobile: (mobile: string) => void;
-  sendOtp: (mobile: string) => Promise<boolean>;
+  sendOtp: (mobile: string) => Promise<{ success: boolean; message?: string }>;
   verifyOtp: (enteredOtp: string) => Promise<{ success: boolean; message?: string }>;
   completeProfileSetup: (
     customDriver?: Driver,
@@ -101,6 +111,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setDriver(parsed);
         refreshDriverProfile(parsed.id);
         registerForRemotePushNotificationsAsync(parsed.id).catch(() => {});
+        if (parsed.online_status !== 'ONLINE') {
+          hideOnlineSearchingNotification().catch(() => {});
+        }
       }
       if (storedVehicle) {
         setVehicle(JSON.parse(storedVehicle));
@@ -135,6 +148,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setDriver((prev) => {
           const merged = { ...prev, ...updatedDriver };
           AsyncStorage.setItem(STORAGE_KEY_DRIVER, JSON.stringify(merged)).catch(() => {});
+          if (merged.online_status !== 'ONLINE') {
+            hideOnlineSearchingNotification().catch(() => {});
+          }
           return merged;
         });
       }
@@ -218,81 +234,84 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [driver?.id]);
 
-  const sendOtp = async (mobile: string): Promise<boolean> => {
+  const sendOtp = async (mobile: string): Promise<{ success: boolean; message?: string }> => {
     setPendingMobile(mobile);
-    return true;
+    const result = await sendOtpVia2Factor(mobile);
+    return { success: result.success, message: result.message };
   };
 
   const verifyOtp = async (enteredOtp: string): Promise<{ success: boolean; message?: string }> => {
-    if (enteredOtp.trim() === '123456') {
-      try {
-        // 1. Check Supabase first for this phone number
-        const supabaseData = await getDriverByMobile(pendingMobile);
-
-        if (supabaseData.driver) {
-          // Existing user in Supabase!
-          setDriver(supabaseData.driver);
-          if (supabaseData.vehicle) setVehicle(supabaseData.vehicle);
-          if (supabaseData.documents.length > 0) setDocuments(supabaseData.documents);
-          setIsNewUser(false);
-          registerForRemotePushNotificationsAsync(supabaseData.driver.id).catch(() => {});
-          await AsyncStorage.setItem(STORAGE_KEY_PROFILE_DONE, 'true');
-          await AsyncStorage.setItem(STORAGE_KEY_DRIVER, JSON.stringify(supabaseData.driver));
-          if (supabaseData.vehicle) {
-            await AsyncStorage.setItem(STORAGE_KEY_VEHICLE, JSON.stringify(supabaseData.vehicle));
-          }
-          if (supabaseData.documents.length > 0) {
-            await AsyncStorage.setItem(STORAGE_KEY_DOCUMENTS, JSON.stringify(supabaseData.documents));
-          }
-        } else {
-          // Check local storage fallback ONLY if the stored driver mobile matches pendingMobile!
-          const storedDriver = await AsyncStorage.getItem(STORAGE_KEY_DRIVER);
-          const profileDone = await AsyncStorage.getItem(STORAGE_KEY_PROFILE_DONE);
-
-          let parsedDriver: Driver | null = null;
-          if (storedDriver) {
-            try {
-              parsedDriver = JSON.parse(storedDriver);
-            } catch {}
-          }
-
-          const cleanedPending = pendingMobile.replace(/\s+/g, '');
-          const cleanedStored = parsedDriver?.mobile?.replace(/\s+/g, '');
-
-          if (parsedDriver && profileDone && cleanedStored && cleanedStored === cleanedPending) {
-            setDriver(parsedDriver);
-            setIsNewUser(false);
-          } else {
-            // Brand-new driver registration
-            const newDriverId = `drv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-            const newDriver: Driver = {
-              ...NEW_DRIVER_TEMPLATE,
-              id: newDriverId,
-              mobile: pendingMobile,
-            };
-            setDriver(newDriver);
-            setVehicle({
-              id: `veh_${newDriverId}`,
-              driver_id: newDriverId,
-              vehicle_type: 'Sedan',
-              vehicle_model: '',
-              vehicle_number: '',
-              created_at: new Date().toISOString(),
-            });
-            setDocuments([]);
-            setIsNewUser(true);
-            await AsyncStorage.removeItem(STORAGE_KEY_PROFILE_DONE);
-          }
-        }
-      } catch (err) {
-        console.warn('Error verifying driver against Supabase:', err);
-      }
-
-      setIsLoggedIn(true);
-      await AsyncStorage.setItem(STORAGE_KEY_AUTH, 'true');
-      return { success: true };
+    const vResult = await verifyOtpVia2Factor(enteredOtp);
+    if (!vResult.success) {
+      return { success: false, message: vResult.message || 'Invalid OTP. Please try again.' };
     }
-    return { success: false, message: 'Invalid OTP. Please enter 123456.' };
+
+    try {
+      // 1. Check Supabase first for this phone number
+      const supabaseData = await getDriverByMobile(pendingMobile);
+
+      if (supabaseData.driver) {
+        // Existing user in Supabase!
+        setDriver(supabaseData.driver);
+        if (supabaseData.vehicle) setVehicle(supabaseData.vehicle);
+        if (supabaseData.documents.length > 0) setDocuments(supabaseData.documents);
+        setIsNewUser(false);
+        registerForRemotePushNotificationsAsync(supabaseData.driver.id).catch(() => {});
+        await AsyncStorage.setItem(STORAGE_KEY_PROFILE_DONE, 'true');
+        await AsyncStorage.setItem(STORAGE_KEY_DRIVER, JSON.stringify(supabaseData.driver));
+        if (supabaseData.vehicle) {
+          await AsyncStorage.setItem(STORAGE_KEY_VEHICLE, JSON.stringify(supabaseData.vehicle));
+        }
+        if (supabaseData.documents.length > 0) {
+          await AsyncStorage.setItem(STORAGE_KEY_DOCUMENTS, JSON.stringify(supabaseData.documents));
+        }
+      } else {
+        // Check local storage fallback ONLY if the stored driver mobile matches pendingMobile!
+        const storedDriver = await AsyncStorage.getItem(STORAGE_KEY_DRIVER);
+        const profileDone = await AsyncStorage.getItem(STORAGE_KEY_PROFILE_DONE);
+
+        let parsedDriver: Driver | null = null;
+        if (storedDriver) {
+          try {
+            parsedDriver = JSON.parse(storedDriver);
+          } catch {}
+        }
+
+        const cleanedPending = pendingMobile.replace(/\s+/g, '');
+        const cleanedStored = parsedDriver?.mobile?.replace(/\s+/g, '');
+
+        if (parsedDriver && profileDone && cleanedStored && cleanedStored === cleanedPending) {
+          setDriver(parsedDriver);
+          setIsNewUser(false);
+        } else {
+          // Brand-new driver registration
+          const newDriverId = `drv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          const newDriver: Driver = {
+            ...NEW_DRIVER_TEMPLATE,
+            id: newDriverId,
+            mobile: pendingMobile,
+          };
+          setDriver(newDriver);
+          setVehicle({
+            id: `veh_${newDriverId}`,
+            driver_id: newDriverId,
+            vehicle_type: 'Sedan',
+            vehicle_model: '',
+            vehicle_number: '',
+            created_at: new Date().toISOString(),
+          });
+          setDocuments([]);
+          setIsNewUser(true);
+          await AsyncStorage.removeItem(STORAGE_KEY_PROFILE_DONE);
+        }
+      }
+    } catch (err) {
+      console.warn('Error verifying driver against Supabase:', err);
+    }
+
+    setIsLoggedIn(true);
+    await AsyncStorage.setItem(STORAGE_KEY_AUTH, 'true');
+    return { success: true };
   };
 
   const completeProfileSetup = async (
@@ -393,12 +412,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (newStatus === 'ONLINE') {
         registerForRemotePushNotificationsAsync(prev.id).catch(() => {});
         syncDriverLocationToSupabase(prev.id).catch(() => {});
+        showOnlineSearchingNotification().catch(() => {});
+      } else {
+        hideOnlineSearchingNotification().catch(() => {});
       }
       return updated;
     });
   };
 
   const logout = async () => {
+    hideOnlineSearchingNotification().catch(() => {});
+    if (driver?.id) {
+      updateDriverOnlineStatusInSupabase(driver.id, 'OFFLINE').catch(() => {});
+    }
     setIsLoggedIn(false);
     setIsNewUser(false);
     await AsyncStorage.removeItem(STORAGE_KEY_AUTH);
@@ -471,7 +497,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     setDriver(updatedDriver);
     await AsyncStorage.setItem(STORAGE_KEY_DRIVER, JSON.stringify(updatedDriver)).catch(() => {});
-    updateDriverDepositInSupabase(driver.id, 'PAID', generatedPayId).catch(() => {});
+    updateDriverDepositInSupabase(driver.id, 'PAID', generatedPayId, 250, updatedDriver).catch(() => {});
   };
 
   const refundSecurityDeposit = async (): Promise<{ success: boolean; message: string }> => {
@@ -500,6 +526,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     setDriver(updatedDriver);
     await AsyncStorage.setItem(STORAGE_KEY_DRIVER, JSON.stringify(updatedDriver)).catch(() => {});
+    updateDriverDepositInSupabase(driver.id, 'PENDING').catch(() => {});
     return {
       success: true,
       message: '₹250 deposit has been refunded to your original payment method.',
@@ -517,10 +544,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
       setDriver(updated);
       AsyncStorage.setItem(STORAGE_KEY_DRIVER, JSON.stringify(updated)).catch(() => {});
+      updateDriverDepositInSupabase(driver.id, 'PENDING').catch(() => {});
     } else {
       paySecurityDeposit();
     }
   };
+
+  
+  // ── Online Driver Heartbeat & Session Management ──
+  // Pings backend every 30s while driver is ONLINE so backend knows session is valid
+  useEffect(() => {
+    if (!driver?.id || driver?.online_status !== "ONLINE") {
+      hideOnlineSearchingNotification().catch(() => {});
+      return;
+    }
+
+    // Show notification while app is running and driver is ONLINE
+    showOnlineSearchingNotification().catch(() => {});
+    syncDriverLocationToSupabase(driver.id).catch(() => {});
+    updateDriverHeartbeatInSupabase(driver.id).catch(() => {});
+
+    // Manage status notification visibility based on whether the app is active
+    const appStateSub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        if (driver?.online_status === 'ONLINE') {
+          showOnlineSearchingNotification().catch(() => {});
+        }
+      } else {
+        // App is closing or backgrounded: dismiss notification so it does not hang
+        hideOnlineSearchingNotification().catch(() => {});
+      }
+    });
+
+    const heartbeatInterval = setInterval(() => {
+      if (driver?.id && driver?.online_status === "ONLINE") {
+        updateDriverHeartbeatInSupabase(driver.id).catch(() => {});
+        syncDriverLocationToSupabase(driver.id).catch(() => {});
+      }
+    }, 30000);
+
+    return () => {
+      appStateSub.remove();
+      clearInterval(heartbeatInterval);
+      hideOnlineSearchingNotification().catch(() => {});
+    };
+  }, [driver?.id, driver?.online_status]);
 
   return (
     <AuthContext.Provider

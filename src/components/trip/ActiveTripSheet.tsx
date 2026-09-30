@@ -117,7 +117,7 @@ export const ActiveTripSheet: React.FC<ActiveTripSheetProps> = ({
       return;
     }
     if (enteredOtp.trim() !== expectedOtp) {
-      setOtpError(`Incorrect OTP. Live customer OTP is ${expectedOtp}`);
+      setOtpError('Incorrect OTP. Please ask the customer for the 4-digit PIN shown on their PickMi app.');
       return;
     }
 
@@ -387,21 +387,6 @@ export const ActiveTripSheet: React.FC<ActiveTripSheetProps> = ({
                 Ask {trip.customer_name} for the 4-digit ride verification code shown on their PickMi app.
               </Text>
             </View>
-
-            {/* Tap-to-AutoFill Demo Helper */}
-            <TouchableOpacity
-              style={styles.otpHelperChip}
-              onPress={() => {
-                setEnteredOtp(expectedOtp);
-                setOtpError('');
-              }}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="sparkles" size={14} color="#7C3AED" />
-              <Text style={styles.otpHelperText}>
-                Customer Live OTP: <Text style={{ fontWeight: '800' }}>{expectedOtp}</Text> (Tap to auto-fill)
-              </Text>
-            </TouchableOpacity>
 
             {/* Visual 4-Digit Boxes */}
             <TouchableOpacity

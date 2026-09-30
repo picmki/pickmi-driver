@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Trip } from '../../types/database';
 import { Colors, Shadows } from '../../theme/colors';
 import { PickMiButton } from '../common/PickMiButton';
+import { getTripRouteTitle } from '../../utils/routeFormatting';
 
 interface TripCardProps {
   trip: Trip;
@@ -43,9 +44,8 @@ export const TripCard: React.FC<TripCardProps> = ({
 
   const badge = getStatusBadge();
 
-  // Extract short city / area name for title header
-  const pickupShort = trip.pickup_location.split(',')[0].trim();
-  const dropShort = trip.drop_location.split(',')[0].trim();
+  // City-based route title for card header (e.g. Bangalore to Airport)
+  const routeTitle = getTripRouteTitle(trip.pickup_location, trip.drop_location);
 
   return (
     <View style={[styles.card, Shadows.sm]}>
@@ -55,7 +55,7 @@ export const TripCard: React.FC<TripCardProps> = ({
         <View style={styles.header}>
           <View style={styles.titleRow}>
             <Text style={styles.routeHeader} numberOfLines={1}>
-              {pickupShort} → {dropShort}
+              {routeTitle}
             </Text>
             <Text style={styles.tripNumber}>{trip.trip_number}</Text>
           </View>

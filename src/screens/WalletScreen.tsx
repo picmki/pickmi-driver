@@ -1,81 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
-  TextInput,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Shadows } from '../theme/colors';
 import { PickMiHeader } from '../components/common/PickMiHeader';
 import { PickMiButton } from '../components/common/PickMiButton';
+import { PickMiDatePickerModal } from '../components/common/PickMiDatePickerModal';
+import { RazorpayCheckoutModal } from '../components/common/RazorpayCheckoutModal';
 import { useWallet } from '../context/WalletContext';
+import { useAuth } from '../context/AuthContext';
 
-type EarningsTab = 'TODAY' | 'WEEKLY' | 'MONTHLY';
+type EarningsTab = 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
 
 export const WalletScreen: React.FC = () => {
-  const { wallet, transactions, loadWalletAmount } = useWallet();
+  const { wallet, transactions, isLoading, refreshWallet, settleNegativeBalance, getEarningsForPeriod } = useWallet();
+  const { driver } = useAuth();
+
   const [earningsTab, setEarningsTab] = useState<EarningsTab>('TODAY');
-  const [showLoadModal, setShowLoadModal] = useState(false);
-  const [loadAmountInput, setLoadAmountInput] = useState('1000');
+  const [selectedCustomDate, setSelectedCustomDate] = useState<string>(
+    new Date().toISOString().slice(0, 10)
+  );
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [showRazorpayPayModal, setShowRazorpayPayModal] = useState<boolean>(false);
 
-  const handleLoadSubmit = () => {
-    const num = parseFloat(loadAmountInput);
-    if (isNaN(num) || num <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount to load.');
-      return;
-    }
-    const res = loadWalletAmount(num);
-    if (res.success) {
-      setShowLoadModal(false);
-      setLoadAmountInput('1000');
-    } else {
-      Alert.alert('Notice', res.message);
-    }
-  };
+  // Automatically refresh wallet data whenever the screen is opened
+  useEffect(() => {
+    refreshWallet();
+  }, []);
 
-  // Dynamic values based on selected earnings tab
-  const getTabContent = () => {
-    switch (earningsTab) {
-      case 'TODAY':
-        return {
-          amount: wallet.today_earnings,
-          dateRange: 'Today • 27 Sep 2026 • 06:00 AM - Now',
-          tripsCount: '3 Trips',
-          avgFare: '₹816 / trip',
-          onlineHours: '4.5 hrs',
-          badgeText: '+14% vs yesterday',
-        };
-      case 'WEEKLY':
-        return {
-          amount: wallet.this_week_earnings,
-          dateRange: '21 Sep 2026 - 27 Sep 2026 (Mon - Sun)',
-          tripsCount: '18 Trips',
-          avgFare: '₹822 / trip',
-          onlineHours: '29.4 hrs',
-          badgeText: '+9% vs last week',
-        };
-      case 'MONTHLY':
-        return {
-          amount: wallet.this_month_earnings,
-          dateRange: '01 Sep 2026 - 27 Sep 2026 (September 2026)',
-          tripsCount: '82 Trips',
-          avgFare: '₹710 / trip',
-          onlineHours: '118 hrs',
-          badgeText: 'Top 10% Partner',
-        };
+  // Dynamic calculations for current period
+  const periodData = getEarningsForPeriod(earningsTab, selectedCustomDate);
+  const isNegativeBalance = wallet.balance < 0;
+  const negativeAmount = Math.abs(wallet.balance);
+
+  // Format custom date for display
+  const formatCustomDateLabel = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    } catch {
+      return dateStr;
     }
   };
 
-  const currentTabInfo = getTabContent();
+  const handleClearNegativeSuccess = async (paymentId: string) => {
+    setShowRazorpayPayModal(false);
+    await settleNegativeBalance(negativeAmount, paymentId);
+  };
 
   return (
     <View style={styles.container}>
-      {/* Clean Header without bottom line and without avatar */}
       <PickMiHeader title="My Wallet" showLogo={false} showAvatar={false} />
 
       <ScrollView
@@ -83,13 +63,78 @@ export const WalletScreen: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* 1. EARNINGS SUMMARY: SINGLE UNIFIED CARD (as requested) */}
+        {/* ── 1. NEGATIVE BALANCE ALERT CARD & RAZORPAY CTA ── */}
+        {isNegativeBalance && (
+          <View style={[styles.negativeCard, Shadows.md]}>
+            <View style={styles.negativeTopRow}>
+              <View style={styles.negativeIconBox}>
+                <Ionicons name="warning" size={24} color="#DC2626" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.negativeTitle}>Outstanding Balance Due</Text>
+                <Text style={styles.negativeSubtitle}>
+                  Your wallet has a negative balance due to administrative penalties or fees.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.negativeAmountBox}>
+              <Text style={styles.negativeCurrency}>- ₹</Text>
+              <Text style={styles.negativeValue}>{negativeAmount.toFixed(2)}</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.payRazorpayCta}
+              onPress={() => setShowRazorpayPayModal(true)}
+              activeOpacity={0.88}
+            >
+              <View style={styles.rzpPill}>
+                <Text style={styles.rzpPillText}>Razorpay</Text>
+              </View>
+              <Text style={styles.payRazorpayCtaText}>
+                Pay ₹{negativeAmount.toFixed(2)} Now
+              </Text>
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── 2. WALLET BALANCE CARD (When positive or zero) ── */}
+        {!isNegativeBalance && (
+          <View style={[styles.balanceCard, Shadows.md]}>
+            <View style={styles.balanceHeader}>
+              <View>
+                <Text style={styles.balanceLabel}>Net Wallet Balance</Text>
+                <Text style={styles.balanceAmount}>₹{wallet.balance.toFixed(2)}</Text>
+              </View>
+              <View style={styles.walletIconCircle}>
+                <Ionicons name="wallet-outline" size={24} color={Colors.white} />
+              </View>
+            </View>
+
+            <View style={styles.balanceActions}>
+              <View style={styles.balanceStatusTag}>
+                <View style={styles.statusGreenDot} />
+                <Text style={styles.balanceStatusText}>Account in Good Standing</Text>
+              </View>
+              <TouchableOpacity onPress={() => refreshWallet()} disabled={isLoading}>
+                {isLoading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="refresh" size={18} color="rgba(255,255,255,0.85)" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* ── 3. DYNAMIC EARNINGS SUMMARY CARD ── */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>EARNINGS SUMMARY</Text>
+          <Text style={styles.sectionTitle}>DYNAMIC EARNINGS SUMMARY</Text>
         </View>
 
         <View style={[styles.singleEarningsCard, Shadows.sm]}>
-          {/* Segmented Period Tabs at Top: Today | Weekly | Monthly */}
+          {/* Segmented Period Tabs: Today | Weekly | Monthly | Select Date */}
           <View style={styles.segmentedTabWrapper}>
             <TouchableOpacity
               style={[
@@ -144,219 +189,217 @@ export const WalletScreen: React.FC = () => {
                 Monthly
               </Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.segmentTabItem,
+                earningsTab === 'CUSTOM' && styles.segmentTabItemActive,
+              ]}
+              onPress={() => {
+                setEarningsTab('CUSTOM');
+                setShowDatePicker(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <Ionicons
+                  name="calendar-outline"
+                  size={12}
+                  color={earningsTab === 'CUSTOM' ? Colors.primary : Colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.segmentTabText,
+                    earningsTab === 'CUSTOM' && styles.segmentTabTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {earningsTab === 'CUSTOM' ? formatCustomDateLabel(selectedCustomDate) : 'Date'}
+                </Text>
+              </View>
+            </TouchableOpacity>
           </View>
 
-          {/* Amount on Left & Badge on Right */}
+          {/* Earnings Hero Row */}
           <View style={styles.earningsMainRow}>
             <View>
-              <Text style={styles.earningsSubLabel}>Total Net Earnings</Text>
+              <Text style={styles.earningsSubLabel}>Driver Trip Earnings</Text>
               <Text style={styles.earningsHeroAmount}>
-                ₹{currentTabInfo.amount.toLocaleString('en-IN')}
+                ₹{periodData.totalAmount.toLocaleString('en-IN')}
               </Text>
             </View>
 
             <View style={styles.trendBadgeBox}>
               <Ionicons name="trending-up" size={14} color={Colors.successDark} />
-              <Text style={styles.trendBadgeText}>{currentTabInfo.badgeText}</Text>
-            </View>
-          </View>
-
-          {/* Date & Time Range Info */}
-          <View style={styles.dateRangeBox}>
-            <Ionicons name="calendar-outline" size={14} color={Colors.textSecondary} />
-            <Text style={styles.dateRangeText}>{currentTabInfo.dateRange}</Text>
-          </View>
-
-          {/* Metrics Row Inside Card */}
-          <View style={styles.metricsRow}>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>TRIPS</Text>
-              <Text style={styles.metricValue}>{currentTabInfo.tripsCount}</Text>
-            </View>
-            <View style={styles.metricDivider} />
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>AVG FARE</Text>
-              <Text style={styles.metricValue}>{currentTabInfo.avgFare}</Text>
-            </View>
-            <View style={styles.metricDivider} />
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>HOURS</Text>
-              <Text style={styles.metricValue}>{currentTabInfo.onlineHours}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* 2. AVAILABLE BALANCE CARD: LOAD AMOUNT ONLY (HDFC removed as requested) */}
-        <View style={[styles.balanceCard, Shadows.md]}>
-          <View style={styles.balanceHeader}>
-            <View>
-              <Text style={styles.balanceLabel}>Available Balance</Text>
-              <Text style={styles.balanceAmount}>
-                ₹{wallet.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              <Text style={styles.trendBadgeText}>
+                {periodData.tripsCount} {periodData.tripsCount === 1 ? 'Trip' : 'Trips'}
               </Text>
             </View>
-
-            <View style={styles.walletIconCircle}>
-              <Ionicons name="wallet" size={26} color={Colors.white} />
-            </View>
           </View>
 
-          <View style={styles.balanceActions}>
-            {/* Load Amount Button */}
-            <TouchableOpacity
-              style={styles.loadAmountBtn}
-              onPress={() => setShowLoadModal(true)}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="add-circle" size={20} color={Colors.primary} />
-              <Text style={styles.loadAmountBtnText}>Load Amount</Text>
-            </TouchableOpacity>
+          {/* Date Range Badge */}
+          <View style={styles.dateRangeBox}>
+            <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
+            <Text style={styles.dateRangeText}>{periodData.dateLabel}</Text>
+          </View>
 
-            <View style={styles.balanceStatusTag}>
-              <View style={styles.statusGreenDot} />
-              <Text style={styles.balanceStatusText}>Instant Deposit Active</Text>
+          {/* Dynamic Metrics: Avg Fare & Completed Trips */}
+          <View style={styles.metricsRow}>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>COMPLETED TRIPS</Text>
+              <Text style={styles.metricValue}>{periodData.tripsCount} Rides</Text>
+            </View>
+
+            <View style={styles.metricDivider} />
+
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>AVERAGE FARE</Text>
+              <Text style={styles.metricValue}>₹{periodData.avgFare.toLocaleString('en-IN')}</Text>
+            </View>
+
+            <View style={styles.metricDivider} />
+
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>STATUS</Text>
+              <Text style={[styles.metricValue, { color: Colors.successDark }]}>Earned</Text>
             </View>
           </View>
         </View>
 
-        {/* 3. RECENT TRANSACTIONS */}
+        {/* ── 4. COMPLETED TRIPS ON THIS PERIOD / DATE ── */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>RECENT TRANSACTIONS</Text>
-          <Text style={styles.transactionCount}>{transactions.length} items</Text>
+          <Text style={styles.sectionTitle}>
+            {earningsTab === 'CUSTOM'
+              ? `TRIPS ON ${formatCustomDateLabel(selectedCustomDate).toUpperCase()}`
+              : `${earningsTab} COMPLETED TRIPS`}
+          </Text>
+          <Text style={styles.transactionCount}>{periodData.tripList.length} Trips</Text>
         </View>
 
         <View style={styles.transactionsContainer}>
-          {transactions.map((tx) => {
-            const isCredit = tx.amount > 0;
-            return (
-              <View key={tx.id} style={[styles.txItem, Shadows.sm]}>
-                <View
-                  style={[
-                    styles.txIconBox,
-                    { backgroundColor: isCredit ? Colors.successLight : Colors.dangerLight },
-                  ]}
-                >
-                  <Ionicons
-                    name={
-                      tx.type === 'TRIP_EARNING'
-                        ? 'car'
-                        : tx.type === 'BONUS'
-                        ? 'gift'
-                        : tx.type === 'DRIVER_DEPOSIT'
-                        ? 'wallet'
-                        : 'arrow-down'
-                    }
-                    size={20}
-                    color={isCredit ? Colors.successDark : Colors.danger}
-                  />
+          {periodData.tripList.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Ionicons name="car-sport-outline" size={32} color="#94A3B8" />
+              <Text style={styles.emptyTitle}>No Completed Trips</Text>
+              <Text style={styles.emptySubtitle}>
+                No trips were completed during this period. Go online to start earning!
+              </Text>
+            </View>
+          ) : (
+            periodData.tripList.map((trip) => (
+              <View key={trip.id} style={[styles.txItem, Shadows.sm]}>
+                <View style={[styles.txIconBox, { backgroundColor: '#ECFDF5' }]}>
+                  <Ionicons name="checkmark-circle" size={20} color="#059669" />
                 </View>
 
                 <View style={styles.txDetails}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.txTripNumber}>{trip.trip_number}</Text>
+                    <View style={styles.tripTypeTag}>
+                      <Text style={styles.tripTypeTagText}>{trip.type}</Text>
+                    </View>
+                  </View>
                   <Text style={styles.txDescription} numberOfLines={1}>
-                    {tx.description}
+                    {trip.pickup} → {trip.drop}
                   </Text>
-                  <Text style={styles.txDate}>
-                    {new Date(tx.created_at).toLocaleDateString('en-IN', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
-                  </Text>
+                  <Text style={styles.txDate}>{trip.date}</Text>
                 </View>
 
                 <View style={styles.txAmountContainer}>
-                  <Text
-                    style={[
-                      styles.txAmount,
-                      { color: isCredit ? Colors.successDark : Colors.danger },
-                    ]}
-                  >
-                    {isCredit ? '+' : ''}₹{Math.abs(tx.amount).toLocaleString('en-IN')}
+                  <Text style={[styles.txAmount, { color: '#059669' }]}>
+                    + ₹{trip.fare.toLocaleString('en-IN')}
                   </Text>
-                  <Text style={styles.txTypeTag}>
-                    {tx.type === 'TRIP_EARNING'
-                      ? 'Trip Fare'
-                      : tx.type === 'DRIVER_DEPOSIT'
-                      ? 'Wallet Load'
-                      : 'Transfer'}
-                  </Text>
+                  <Text style={styles.txStatusLabel}>Cash / Online</Text>
                 </View>
               </View>
-            );
-          })}
+            ))
+          )}
         </View>
-      </ScrollView>
 
-      {/* Load Amount Modal */}
-      <Modal
-        visible={showLoadModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowLoadModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Load Wallet Balance</Text>
-              <TouchableOpacity onPress={() => setShowLoadModal(false)}>
-                <Ionicons name="close-circle" size={26} color={Colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.modalSubtitle}>
-              Top up your driver balance via UPI, NetBanking or Debit Card.
-            </Text>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Enter Amount (₹)</Text>
-              <View style={styles.amountInputRow}>
-                <Text style={styles.rupeeSymbol}>₹</Text>
-                <TextInput
-                  style={styles.amountInput}
-                  value={loadAmountInput}
-                  onChangeText={setLoadAmountInput}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor={Colors.textPlaceholder}
-                />
-              </View>
-              <Text style={styles.availableHelper}>
-                Current Balance: ₹{wallet.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+        {/* ── 5. PENALTIES & DEDUCTIONS LEDGER ── */}
+        {transactions.some((t) => t.type === 'PENALTY' || t.type === 'PLATFORM_FEE') && (
+          <>
+            <View style={[styles.sectionHeader, { marginTop: 24 }]}>
+              <Text style={[styles.sectionTitle, { color: '#DC2626' }]}>
+                PENALTIES & DEDUCTIONS
               </Text>
             </View>
 
-            {/* Quick Chips */}
-            <View style={styles.quickChipsRow}>
-              {['500', '1000', '2000', '5000'].map((chip) => (
-                <TouchableOpacity
-                  key={chip}
-                  style={[
-                    styles.chipBtn,
-                    loadAmountInput === chip && styles.chipBtnActive,
-                  ]}
-                  onPress={() => setLoadAmountInput(chip)}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      loadAmountInput === chip && styles.chipTextActive,
-                    ]}
-                  >
-                    +₹{chip}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <View style={styles.transactionsContainer}>
+              {transactions
+                .filter((t) => t.type === 'PENALTY' || t.type === 'PLATFORM_FEE')
+                .map((tx) => (
+                  <View key={tx.id} style={[styles.txItem, styles.penaltyItem]}>
+                    <View style={[styles.txIconBox, { backgroundColor: '#FEE2E2' }]}>
+                      <Ionicons name="alert-circle" size={20} color="#DC2626" />
+                    </View>
 
-            <PickMiButton
-              title={`Load ₹${loadAmountInput || '0'} Instantly`}
-              onPress={handleLoadSubmit}
-              variant="primary"
-              size="lg"
-            />
-          </View>
-        </View>
-      </Modal>
+                    <View style={styles.txDetails}>
+                      <Text style={[styles.txDescription, { color: '#991B1B' }]}>
+                        {tx.description || 'Administrative Penalty / Fee'}
+                      </Text>
+                      <Text style={styles.txDate}>
+                        {tx.created_at
+                          ? new Date(tx.created_at).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          : 'Recent'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.txAmountContainer}>
+                      <Text style={[styles.txAmount, { color: '#DC2626' }]}>
+                        - ₹{Math.abs(Number(tx.amount)).toFixed(2)}
+                      </Text>
+                      <Text style={[styles.txStatusLabel, { color: '#DC2626' }]}>Deducted</Text>
+                    </View>
+                  </View>
+                ))}
+            </View>
+          </>
+        )}
+      </ScrollView>
+
+      {/* Date Picker Modal for "Select Date" option */}
+      <PickMiDatePickerModal
+        visible={showDatePicker}
+        title="Select Date for Earnings"
+        initialDate={selectedCustomDate}
+        futureOnly={false}
+        onConfirm={(formattedDate: string) => {
+          try {
+            const parsed = new Date(formattedDate);
+            if (!isNaN(parsed.getTime())) {
+              const yyyy = parsed.getFullYear();
+              const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+              const dd = String(parsed.getDate()).padStart(2, "0");
+              setSelectedCustomDate(`${yyyy}-${mm}-${dd}`);
+            } else {
+              setSelectedCustomDate(formattedDate);
+            }
+          } catch {
+            setSelectedCustomDate(formattedDate);
+          }
+          setEarningsTab("CUSTOM");
+          setShowDatePicker(false);
+        }}
+        onClose={() => setShowDatePicker(false)}
+      />
+
+      {/* Real Razorpay Checkout Modal for Negative Balance Clearance */}
+      <RazorpayCheckoutModal
+        visible={showRazorpayPayModal}
+        amount={negativeAmount}
+        title="PickMi Wallet Clearance"
+        description="Clear Negative Wallet Balance & Platform Fees"
+        driverName={driver?.name || 'PickMi Driver'}
+        driverMobile={driver?.mobile || '+91 98765 43210'}
+        driverEmail={driver?.email || 'driver@pickmi.com'}
+        onSuccess={handleClearNegativeSuccess}
+        onClose={() => setShowRazorpayPayModal(false)}
+      />
     </View>
   );
 };
@@ -391,6 +434,144 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontWeight: '600',
   },
+  // Negative Balance Warning Card
+  negativeCard: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 22,
+    padding: 18,
+    marginHorizontal: 16,
+    marginBottom: 18,
+    borderWidth: 1.5,
+    borderColor: '#FECACA',
+  },
+  negativeTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  negativeIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  negativeTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#991B1B',
+  },
+  negativeSubtitle: {
+    fontSize: 12,
+    color: '#7F1D1D',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  negativeAmountBox: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginVertical: 10,
+  },
+  negativeCurrency: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#DC2626',
+  },
+  negativeValue: {
+    fontSize: 36,
+    fontWeight: '900',
+    color: '#DC2626',
+    letterSpacing: -0.5,
+  },
+  payRazorpayCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0043DC',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  rzpPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  rzpPillText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  payRazorpayCtaText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  // Normal Balance Card
+  balanceCard: {
+    backgroundColor: Colors.primary,
+    borderRadius: 22,
+    padding: 20,
+    marginHorizontal: 16,
+    marginBottom: 20,
+  },
+  balanceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  balanceLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  balanceAmount: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: Colors.white,
+    marginTop: 4,
+    letterSpacing: -0.5,
+  },
+  walletIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  balanceActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.18)',
+  },
+  balanceStatusTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusGreenDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#34C759',
+  },
+  balanceStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.95)',
+  },
   singleEarningsCard: {
     backgroundColor: Colors.white,
     borderRadius: 22,
@@ -411,6 +592,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 7,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 9,
   },
   segmentTabItemActive: {
@@ -422,8 +604,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   segmentTabText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: Colors.textSecondary,
   },
   segmentTabTextActive: {
@@ -509,81 +691,6 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     marginTop: 2,
   },
-  balanceCard: {
-    backgroundColor: Colors.primary,
-    borderRadius: 22,
-    padding: 20,
-    marginHorizontal: 16,
-    marginBottom: 20,
-  },
-  balanceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  balanceLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.85)',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  balanceAmount: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: Colors.white,
-    marginTop: 4,
-    letterSpacing: -0.5,
-  },
-  walletIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  balanceActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 18,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.18)',
-  },
-  loadAmountBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 14,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  loadAmountBtnText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.primary,
-  },
-  balanceStatusTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusGreenDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#34C759',
-  },
-  balanceStatusText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.9)',
-  },
   transactionsContainer: {
     paddingHorizontal: 16,
     gap: 10,
@@ -597,6 +704,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.04)',
   },
+  penaltyItem: {
+    backgroundColor: '#FFF5F5',
+    borderColor: '#FED7D7',
+  },
   txIconBox: {
     width: 42,
     height: 42,
@@ -609,10 +720,27 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
+  txTripNumber: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  tripTypeTag: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  tripTypeTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
   txDescription: {
     fontSize: 13,
     fontWeight: '700',
     color: Colors.textPrimary,
+    marginTop: 2,
   },
   txDate: {
     fontSize: 11,
@@ -626,101 +754,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
   },
-  txTypeTag: {
+  txStatusLabel: {
     fontSize: 10,
     fontWeight: '600',
     color: Colors.textMuted,
     marginTop: 2,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
+  emptyCard: {
     backgroundColor: Colors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    borderRadius: 18,
+    padding: 32,
     alignItems: 'center',
-    marginBottom: 6,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 8,
   },
-  modalTitle: {
-    fontSize: 20,
+  emptyTitle: {
+    fontSize: 15,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
-  modalSubtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginBottom: 20,
-    lineHeight: 18,
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 8,
-  },
-  amountInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    height: 56,
-    backgroundColor: Colors.background,
-  },
-  rupeeSymbol: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.textPrimary,
-    marginRight: 8,
-  },
-  amountInput: {
-    flex: 1,
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.textPrimary,
-  },
-  availableHelper: {
+  emptySubtitle: {
     fontSize: 12,
     color: Colors.textMuted,
-    marginTop: 6,
-  },
-  quickChipsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 24,
-  },
-  chipBtn: {
-    flex: 1,
-    backgroundColor: Colors.borderLight,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  chipBtnActive: {
-    backgroundColor: Colors.primaryLight,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  chipText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  chipTextActive: {
-    color: Colors.primary,
-    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 240,
   },
 });

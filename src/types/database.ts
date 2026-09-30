@@ -13,7 +13,7 @@ export type DriverStatus = 'active' | 'inactive' | 'suspended';
 export type OnlineStatus = 'ONLINE' | 'OFFLINE';
 export type DocumentVerificationStatus = 'Verified' | 'Pending' | 'Rejected';
 export type VehicleType = 'Sedan' | 'SUV' | 'Hatchback' | 'Prime Sedan' | 'EV';
-export type TransactionType = 'TRIP_EARNING' | 'DRIVER_DEPOSIT' | 'WITHDRAWAL' | 'PLATFORM_FEE' | 'BONUS';
+export type TransactionType = 'TRIP_EARNING' | 'DRIVER_DEPOSIT' | 'WITHDRAWAL' | 'PLATFORM_FEE' | 'BONUS' | 'PENALTY' | 'WALLET_SETTLEMENT';
 
 // 1. drivers entity
 export interface Driver {
@@ -28,9 +28,9 @@ export interface Driver {
   total_trips?: number;
   deposit_status?: 'PAID' | 'PENDING';
   deposit_amount?: number;
-  deposit_paid_at?: string;
-  deposit_expires_at?: string;
-  deposit_payment_id?: string;
+  deposit_paid_at?: string | null;
+  deposit_expires_at?: string | null;
+  deposit_payment_id?: string | null;
   push_token?: string | null;
   current_latitude?: number | null;
   current_longitude?: number | null;
@@ -94,6 +94,7 @@ export interface Trip {
   extra_km_charges?: number;
   total_fare?: number;
   completed_at?: string;
+  updated_at?: string;
   created_at: string;
 }
 

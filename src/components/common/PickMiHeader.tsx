@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Modal, ScrollView, Platform, StatusBar } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../context/AuthContext';
@@ -39,10 +40,15 @@ export const PickMiHeader: React.FC<PickMiHeaderProps> = ({
   const shouldShowAvatar = Boolean(showAvatar);
   // Show notification icon on left side by default when logo is visible (e.g., home page)
   const shouldShowNotification = showNotification !== undefined ? showNotification : (shouldShowLogo && !showBack);
+  const insets = useSafeAreaInsets();
+  const topPadding = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 20
+  );
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: topPadding + 6 }]}>
       <View style={styles.left}>
         {showBack ? (
           <TouchableOpacity
@@ -189,7 +195,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingBottom: 12,
     backgroundColor: Colors.white,
   },
   left: {

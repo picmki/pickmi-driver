@@ -1,16 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Modal,
   TouchableOpacity,
-  ScrollView,
   ActivityIndicator,
   Platform,
+  Alert,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Shadows } from '../../theme/colors';
+import { Colors } from '../../theme/colors';
 import { playOnlineSound } from '../../utils/soundEffects';
 
 interface RazorpayCheckoutModalProps {
@@ -25,716 +28,457 @@ interface RazorpayCheckoutModalProps {
   onClose: () => void;
 }
 
-type PaymentMethod = 'UPI' | 'CARD' | 'NETBANKING';
+function getRazorpayCheckoutHtml(params: {
+  keyId: string;
+  amount: number;
+  title: string;
+  description: string;
+  driverName: string;
+  driverMobile: string;
+  driverEmail: string;
+}) {
+  const amountInPaise = Math.round(params.amount * 100);
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Razorpay Checkout</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: #0C2340;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #FFFFFF;
+      overflow: hidden;
+    }
+    .loader-box {
+      text-align: center;
+      padding: 24px;
+    }
+    .spinner {
+      border: 3px solid rgba(255, 255, 255, 0.15);
+      border-top: 3px solid #3395FF;
+      border-radius: 50%;
+      width: 46px;
+      height: 46px;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+    .subtitle { font-size: 13px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+  <div class="loader-box">
+    <div class="spinner"></div>
+    <div class="title">Connecting directly to Razorpay...</div>
+    <div class="subtitle">Opening UPI, Cards & NetBanking checkout</div>
+  </div>
+  <script>
+    window.onload = function() {
+      var options = {
+        key: "${params.keyId}",
+        amount: "${amountInPaise}",
+        currency: "INR",
+        name: "${params.title.replace(/"/g, '\\"')}",
+        description: "${params.description.replace(/"/g, '\\"')}",
+        prefill: {
+          name: "${params.driverName.replace(/"/g, '\\"')}",
+          contact: "${params.driverMobile.replace(/"/g, '\\"')}",
+          email: "${params.driverEmail.replace(/"/g, '\\"')}"
+        },
+        theme: { color: "#0043DC" },
+        modal: {
+          backdropclose: false,
+          escape: false,
+          handleback: true,
+          confirm_close: true,
+          ondismiss: function() {
+            if (window.ReactNativeWebView) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ event: 'DISMISS' }));
+            }
+          }
+        },
+        handler: function(response) {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              event: 'SUCCESS',
+              paymentId: response.razorpay_payment_id,
+              orderId: response.razorpay_order_id,
+              signature: response.razorpay_signature
+            }));
+          }
+        }
+      };
+      try {
+        var rzp = new Razorpay(options);
+        rzp.on('payment.failed', function(resp) {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              event: 'FAILED',
+              description: (resp.error && resp.error.description) || 'Payment Failed'
+            }));
+          }
+        });
+        rzp.open();
+      } catch (err) {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            event: 'ERROR',
+            message: err.message
+          }));
+        }
+      }
+    };
+  </script>
+</body>
+</html>`;
+}
 
 export const RazorpayCheckoutModal: React.FC<RazorpayCheckoutModalProps> = ({
   visible,
   amount = 250,
-  title = 'PickMi Driver Partner',
-  description = '1-Year Mandatory Security Deposit',
-  driverName = 'Karthik P',
+  title = 'PickMi Driver Security Deposit',
+  description = '1-Year Mandatory Partner Security Deposit',
+  driverName = 'PickMi Driver',
   driverMobile = '+91 98765 43210',
   driverEmail = 'driver@pickmi.com',
   onSuccess,
   onClose,
 }) => {
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('UPI');
-  const [selectedUpiApp, setSelectedUpiApp] = useState<'GPAY' | 'PHONEPE' | 'PAYTM'>('GPAY');
-  const [paymentState, setPaymentState] = useState<'IDLE' | 'PROCESSING' | 'SUCCESS'>('IDLE');
-  const [generatedPaymentId, setGeneratedPaymentId] = useState('');
+  const [paymentSuccessId, setPaymentSuccessId] = useState<string | null>(null);
+  const liveKeyId = (process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_Tbvz9tjiGE4r0y').trim();
 
-  const handlePay = async () => {
-    setPaymentState('PROCESSING');
+  // On Web: Trigger Razorpay JS checkout directly when visible becomes true
+  useEffect(() => {
+    if (!visible || Platform.OS !== 'web') return;
 
-    // Simulate authentic Razorpay bank gateway processing
-    await new Promise((resolve) => setTimeout(resolve, 1400));
+    let isMounted = true;
 
-    const paymentId = `pay_rzp_${Math.random().toString(36).substring(2, 9).toUpperCase()}${Date.now().toString().slice(-4)}`;
-    setGeneratedPaymentId(paymentId);
-    setPaymentState('SUCCESS');
-    playOnlineSound();
+    const openWebRazorpay = async () => {
+      try {
+        if (!(window as any).Razorpay) {
+          await new Promise<void>((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error('Failed to load Razorpay SDK'));
+            document.body.appendChild(script);
+          });
+        }
 
-    setTimeout(() => {
-      setPaymentState('IDLE');
-      onSuccess(paymentId);
-    }, 1200);
+        const rzp = new (window as any).Razorpay({
+          key: liveKeyId,
+          amount: Math.round(amount * 100),
+          currency: 'INR',
+          name: title,
+          description,
+          prefill: {
+            name: driverName,
+            contact: driverMobile,
+            email: driverEmail,
+          },
+          theme: { color: '#0043DC' },
+          modal: {
+            ondismiss: () => {
+              if (isMounted) onClose();
+            },
+          },
+          handler: (response: any) => {
+            if (!isMounted) return;
+            const paymentId = response.razorpay_payment_id;
+            setPaymentSuccessId(paymentId);
+            playOnlineSound();
+            setTimeout(() => {
+              onSuccess(paymentId);
+            }, 1000);
+          },
+        });
+
+        rzp.on('payment.failed', (resp: any) => {
+          Alert.alert('Payment Failed', resp?.error?.description || 'Payment was not completed.');
+        });
+
+        rzp.open();
+      } catch (err: any) {
+        console.warn('Razorpay web checkout error:', err);
+        Alert.alert('Razorpay Error', err?.message || 'Could not launch Razorpay checkout');
+        onClose();
+      }
+    };
+
+    openWebRazorpay();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [visible]);
+
+  // Handle postMessage events from native WebView
+  const handleWebViewMessage = (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.event === 'SUCCESS' && data.paymentId) {
+        setPaymentSuccessId(data.paymentId);
+        playOnlineSound();
+        setTimeout(() => {
+          setPaymentSuccessId(null);
+          onSuccess(data.paymentId);
+        }, 1200);
+      } else if (data.event === 'DISMISS') {
+        onClose();
+      } else if (data.event === 'FAILED' || data.event === 'ERROR') {
+        Alert.alert('Payment Failed', data.description || data.message || 'Razorpay payment was not completed.');
+        onClose();
+      }
+    } catch (e) {
+      console.warn('Razorpay WebView message error:', e);
+    }
   };
 
-  const handleClose = () => {
-    if (paymentState === 'PROCESSING') return;
-    setPaymentState('IDLE');
-    onClose();
-  };
+  if (!visible) return null;
 
+  // On Web, Razorpay popup is mounted to DOM, so modal is just a backdrop
+  if (Platform.OS === 'web') {
+    if (paymentSuccessId) {
+      return (
+        <Modal visible={true} transparent animationType="fade">
+          <View style={styles.successBackdrop}>
+            <View style={styles.successCard}>
+              <View style={styles.successCircle}>
+                <Ionicons name="checkmark" size={38} color="#FFFFFF" />
+              </View>
+              <Text style={styles.successTitle}>Payment Successful!</Text>
+              <Text style={styles.successSubtitle}>Razorpay Ref: {paymentSuccessId}</Text>
+            </View>
+          </View>
+        </Modal>
+      );
+    }
+    return null;
+  }
+
+  // On Mobile (iOS / Android): Full Screen Razorpay Direct Gateway
   return (
     <Modal
       visible={visible}
-      transparent={true}
       animationType="slide"
-      onRequestClose={handleClose}
+      transparent={false}
+      onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={[styles.container, Shadows.lg]}>
-          {/* Razorpay Authentic Branded Header */}
-          <View style={styles.rzpHeader}>
-            <View style={styles.rzpHeaderTop}>
-              <View style={styles.brandRow}>
-                <View style={styles.rzpBadge}>
-                  <Text style={styles.rzpBadgeText}>Razorpay</Text>
-                </View>
-                <View style={styles.testModePill}>
-                  <Text style={styles.testModeText}>TEST / DEMO</Text>
-                </View>
-              </View>
+      <SafeAreaView style={styles.safeContainer}>
+        <StatusBar barStyle="light-content" backgroundColor="#0C2340" />
 
-              <TouchableOpacity
-                onPress={handleClose}
-                disabled={paymentState === 'PROCESSING'}
-                style={styles.closeBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={20} color="rgba(255, 255, 255, 0.8)" />
-              </TouchableOpacity>
+        {/* Razorpay Top Navigation Bar */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <View style={styles.rzpBadge}>
+              <Text style={styles.rzpBadgeText}>Razorpay</Text>
             </View>
-
-            <View style={styles.orderInfo}>
-              <Text style={styles.merchantName}>{title}</Text>
-              <Text style={styles.orderDescription}>{description}</Text>
-              <View style={styles.amountRow}>
-                <Text style={styles.amountCurrency}>₹</Text>
-                <Text style={styles.amountValue}>{amount.toFixed(2)}</Text>
-              </View>
-            </View>
-
-            {/* Customer Details Pill */}
-            <View style={styles.customerPill}>
-              <Ionicons name="person-circle-outline" size={16} color="rgba(255, 255, 255, 0.7)" />
-              <Text style={styles.customerText} numberOfLines={1}>
-                {driverName} • {driverMobile}
-              </Text>
+            <View style={styles.secureTag}>
+              <Ionicons name="lock-closed" size={12} color="#10B981" />
+              <Text style={styles.secureTagText}>Official Gateway</Text>
             </View>
           </View>
 
-          {/* Body Content */}
-          {paymentState === 'PROCESSING' ? (
-            <View style={styles.statusBox}>
-              <ActivityIndicator size="large" color="#0C2340" />
-              <Text style={styles.statusTitle}>Processing Payment…</Text>
-              <Text style={styles.statusSubtitle}>
-                Connecting to Razorpay Banking Gateway & Authorizing ₹{amount.toFixed(2)}
-              </Text>
-              <View style={styles.secureNotice}>
-                <Ionicons name="lock-closed" size={14} color={Colors.textMuted} />
-                <Text style={styles.secureNoticeText}>256-bit SSL Encrypted Demo Transaction</Text>
-              </View>
-            </View>
-          ) : paymentState === 'SUCCESS' ? (
-            <View style={styles.statusBox}>
-              <View style={styles.successCircle}>
-                <Ionicons name="checkmark" size={38} color={Colors.white} />
-              </View>
-              <Text style={[styles.statusTitle, { color: Colors.successDark }]}>
-                Payment Successful!
-              </Text>
-              <Text style={styles.paymentIdText}>ID: {generatedPaymentId}</Text>
-              <Text style={styles.statusSubtitle}>
-                ₹{amount.toFixed(2)} Security Deposit Paid • 1 Year Validity Activated
-              </Text>
-            </View>
-          ) : (
-            <ScrollView style={styles.bodyScroll} showsVerticalScrollIndicator={false}>
-              {/* Payment Methods Tab */}
-              <View style={styles.methodSelector}>
-                <TouchableOpacity
-                  style={[
-                    styles.methodTab,
-                    selectedMethod === 'UPI' && styles.methodTabActive,
-                  ]}
-                  onPress={() => setSelectedMethod('UPI')}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons
-                    name="phone-portrait-outline"
-                    size={16}
-                    color={selectedMethod === 'UPI' ? '#0C2340' : Colors.textMuted}
-                  />
-                  <Text
-                    style={[
-                      styles.methodTabText,
-                      selectedMethod === 'UPI' && styles.methodTabTextActive,
-                    ]}
-                  >
-                    UPI Apps
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.methodTab,
-                    selectedMethod === 'CARD' && styles.methodTabActive,
-                  ]}
-                  onPress={() => setSelectedMethod('CARD')}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons
-                    name="card-outline"
-                    size={16}
-                    color={selectedMethod === 'CARD' ? '#0C2340' : Colors.textMuted}
-                  />
-                  <Text
-                    style={[
-                      styles.methodTabText,
-                      selectedMethod === 'CARD' && styles.methodTabTextActive,
-                    ]}
-                  >
-                    Cards
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.methodTab,
-                    selectedMethod === 'NETBANKING' && styles.methodTabActive,
-                  ]}
-                  onPress={() => setSelectedMethod('NETBANKING')}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons
-                    name="globe-outline"
-                    size={16}
-                    color={selectedMethod === 'NETBANKING' ? '#0C2340' : Colors.textMuted}
-                  />
-                  <Text
-                    style={[
-                      styles.methodTabText,
-                      selectedMethod === 'NETBANKING' && styles.methodTabTextActive,
-                    ]}
-                  >
-                    Netbanking
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* UPI Option */}
-              {selectedMethod === 'UPI' && (
-                <View style={styles.optionSection}>
-                  <Text style={styles.sectionHeaderTitle}>SELECT UPI APP</Text>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.upiOptionCard,
-                      selectedUpiApp === 'GPAY' && styles.upiOptionCardActive,
-                    ]}
-                    onPress={() => setSelectedUpiApp('GPAY')}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.upiIconWrap}>
-                      <Ionicons name="logo-google" size={20} color="#EA4335" />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.upiTitle}>Google Pay UPI</Text>
-                      <Text style={styles.upiSub}>Instant 1-tap checkout</Text>
-                    </View>
-                    <Ionicons
-                      name={
-                        selectedUpiApp === 'GPAY'
-                          ? 'radio-button-on'
-                          : 'radio-button-off'
-                      }
-                      size={20}
-                      color={selectedUpiApp === 'GPAY' ? '#0C2340' : Colors.textMuted}
-                    />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.upiOptionCard,
-                      selectedUpiApp === 'PHONEPE' && styles.upiOptionCardActive,
-                    ]}
-                    onPress={() => setSelectedUpiApp('PHONEPE')}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.upiIconWrap}>
-                      <Ionicons name="flash-outline" size={20} color="#5F259F" />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.upiTitle}>PhonePe UPI</Text>
-                      <Text style={styles.upiSub}>Fast bank-to-bank transfer</Text>
-                    </View>
-                    <Ionicons
-                      name={
-                        selectedUpiApp === 'PHONEPE'
-                          ? 'radio-button-on'
-                          : 'radio-button-off'
-                      }
-                      size={20}
-                      color={selectedUpiApp === 'PHONEPE' ? '#0C2340' : Colors.textMuted}
-                    />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.upiOptionCard,
-                      selectedUpiApp === 'PAYTM' && styles.upiOptionCardActive,
-                    ]}
-                    onPress={() => setSelectedUpiApp('PAYTM')}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.upiIconWrap}>
-                      <Ionicons name="wallet-outline" size={20} color="#00BAF2" />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.upiTitle}>Paytm / Any UPI ID</Text>
-                      <Text style={styles.upiSub}>UPI handle or QR</Text>
-                    </View>
-                    <Ionicons
-                      name={
-                        selectedUpiApp === 'PAYTM'
-                          ? 'radio-button-on'
-                          : 'radio-button-off'
-                      }
-                      size={20}
-                      color={selectedUpiApp === 'PAYTM' ? '#0C2340' : Colors.textMuted}
-                    />
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* CARD Option */}
-              {selectedMethod === 'CARD' && (
-                <View style={styles.optionSection}>
-                  <Text style={styles.sectionHeaderTitle}>TEST CARD (PRE-FILLED)</Text>
-                  <View style={styles.cardPreviewBox}>
-                    <View style={styles.cardTopRow}>
-                      <Text style={styles.cardBankText}>TEST BANK</Text>
-                      <Ionicons name="card" size={24} color="#0C2340" />
-                    </View>
-                    <Text style={styles.cardNumberText}>4111 •••• •••• 1111</Text>
-                    <View style={styles.cardBottomRow}>
-                      <View>
-                        <Text style={styles.cardLabel}>CARD HOLDER</Text>
-                        <Text style={styles.cardValueText}>{driverName}</Text>
-                      </View>
-                      <View>
-                        <Text style={styles.cardLabel}>EXPIRES</Text>
-                        <Text style={styles.cardValueText}>12/28</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              )}
-
-              {/* NETBANKING Option */}
-              {selectedMethod === 'NETBANKING' && (
-                <View style={styles.optionSection}>
-                  <Text style={styles.sectionHeaderTitle}>POPULAR INDIAN BANKS</Text>
-                  <View style={styles.bankGrid}>
-                    {['HDFC Bank', 'State Bank of India', 'ICICI Bank', 'Axis Bank'].map(
-                      (bank, idx) => (
-                        <View key={idx} style={styles.bankChip}>
-                          <Ionicons name="business-outline" size={16} color="#0C2340" />
-                          <Text style={styles.bankChipText}>{bank}</Text>
-                        </View>
-                      )
-                    )}
-                  </View>
-                </View>
-              )}
-
-              {/* Security Policy Reminder */}
-              <View style={styles.policyBox}>
-                <Ionicons name="shield-checkmark" size={16} color="#0D9488" />
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={styles.policyTitle}>₹250 Security Deposit Policy</Text>
-                  <Text style={styles.policyDesc}>
-                    • 1 Year validity from payment date.{'\n'}
-                    • 100% refundable if requested within 1 year.{'\n'}
-                    • Non-refundable after 1 year expiry.
-                  </Text>
-                </View>
-              </View>
-
-              {/* Pay Action Button */}
-              <TouchableOpacity
-                style={styles.payBtn}
-                onPress={handlePay}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="lock-closed" size={16} color={Colors.white} />
-                <Text style={styles.payBtnText}>Pay ₹{amount.toFixed(2)} via Razorpay</Text>
-              </TouchableOpacity>
-
-              <View style={styles.secureFooterRow}>
-                <Ionicons name="shield" size={12} color={Colors.textMuted} />
-                <Text style={styles.secureFooterText}>
-                  Razorpay Verified Demo Gateway • PCI-DSS Compliant
-                </Text>
-              </View>
-            </ScrollView>
-          )}
+          <View style={styles.headerRight}>
+            <Text style={styles.amountDisplay}>₹{amount.toFixed(2)}</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="close" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+
+        {/* Direct Razorpay Checkout View */}
+        {paymentSuccessId ? (
+          <View style={styles.successContainer}>
+            <View style={styles.successCircle}>
+              <Ionicons name="checkmark" size={48} color="#FFFFFF" />
+            </View>
+            <Text style={styles.successTitle}>Payment Successful!</Text>
+            <Text style={styles.successSubtitle}>Ref: {paymentSuccessId}</Text>
+            <Text style={styles.successHint}>Unlocking security deposit...</Text>
+          </View>
+        ) : (
+          <View style={styles.webViewWrapper}>
+            <WebView
+              originWhitelist={['*']}
+              source={{
+                html: getRazorpayCheckoutHtml({
+                  keyId: liveKeyId,
+                  amount,
+                  title,
+                  description,
+                  driverName,
+                  driverMobile,
+                  driverEmail,
+                }),
+                baseUrl: 'https://checkout.razorpay.com',
+              }}
+              onMessage={handleWebViewMessage}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              startInLoadingState={true}
+              renderLoading={() => (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#3395FF" />
+                  <Text style={styles.loadingText}>Opening Razorpay Checkout…</Text>
+                </View>
+              )}
+              style={styles.webView}
+            />
+          </View>
+        )}
+      </SafeAreaView>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
+  safeContainer: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  },
-  container: {
-    width: '100%',
-    maxWidth: 480,
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: 'hidden',
-    maxHeight: '90%',
-  },
-  rzpHeader: {
     backgroundColor: '#0C2340',
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 18,
   },
-  rzpHeaderTop: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#0C2340',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
-  brandRow: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   rzpBadge: {
     backgroundColor: '#3395FF',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
   rzpBadgeText: {
-    color: Colors.white,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.3,
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 13,
+    letterSpacing: 0.5,
   },
-  testModePill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 7,
+  secureTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 4,
+    borderRadius: 6,
   },
-  testModeText: {
-    color: '#93C5FD',
-    fontSize: 10,
+  secureTagText: {
+    color: '#10B981',
+    fontSize: 11,
     fontWeight: '700',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  amountDisplay: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
   },
   closeBtn: {
-    padding: 4,
-  },
-  orderInfo: {
-    marginBottom: 10,
-  },
-  merchantName: {
-    color: Colors.white,
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  orderDescription: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  amountRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 6,
-  },
-  amountCurrency: {
-    color: Colors.white,
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 4,
-    marginRight: 2,
-  },
-  amountValue: {
-    color: Colors.white,
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  customerPill: {
-    flexDirection: 'row',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+    justifyContent: 'center',
   },
-  customerText: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  bodyScroll: {
-    padding: 16,
-  },
-  methodSelector: {
-    flexDirection: 'row',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 16,
-    gap: 4,
-  },
-  methodTab: {
+  webViewWrapper: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  methodTabActive: {
-    backgroundColor: Colors.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  methodTabText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textMuted,
-  },
-  methodTabTextActive: {
-    color: '#0C2340',
-    fontWeight: '800',
-  },
-  optionSection: {
-    marginBottom: 14,
-  },
-  sectionHeaderTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  upiOptionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    padding: 12,
-    marginBottom: 8,
-  },
-  upiOptionCardActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#3B82F6',
-  },
-  upiIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  upiTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  upiSub: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: 1,
-  },
-  cardPreviewBox: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  cardBankText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#0C2340',
-    letterSpacing: 1,
-  },
-  cardNumberText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    letterSpacing: 2,
-    marginBottom: 16,
-  },
-  cardBottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  cardLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: Colors.textMuted,
-  },
-  cardValueText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginTop: 2,
-  },
-  bankGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  bankChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    width: '48%',
-  },
-  bankChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  policyBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#F0FDFA',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#CCFBF1',
-    padding: 12,
-    marginBottom: 16,
-  },
-  policyTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0D9488',
-    marginBottom: 2,
-  },
-  policyDesc: {
-    fontSize: 11,
-    color: '#115E59',
-    lineHeight: 16,
-  },
-  payBtn: {
     backgroundColor: '#0C2340',
-    flexDirection: 'row',
+  },
+  webView: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 15,
-    borderRadius: 14,
-    gap: 8,
-    shadowColor: '#0C2340',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 4,
+    backgroundColor: '#0C2340',
+    gap: 12,
   },
-  payBtnText: {
-    color: Colors.white,
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  secureFooterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    marginTop: 10,
-    marginBottom: 8,
-  },
-  secureFooterText: {
-    fontSize: 10,
-    color: Colors.textMuted,
-    fontWeight: '500',
-  },
-  statusBox: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 44,
-    paddingHorizontal: 20,
-  },
-  statusTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: Colors.textPrimary,
-    marginTop: 16,
-    textAlign: 'center',
-  },
-  statusSubtitle: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 6,
-    lineHeight: 18,
-    maxWidth: 280,
-  },
-  secureNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 20,
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  secureNoticeText: {
-    fontSize: 11,
-    color: Colors.textMuted,
+  loadingText: {
+    color: '#94A3B8',
+    fontSize: 14,
     fontWeight: '600',
+  },
+  successContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
   },
   successCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: Colors.success,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#10B981',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: Colors.success,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
+    marginBottom: 20,
   },
-  paymentIdText: {
-    fontSize: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    fontWeight: '700',
-    color: Colors.textMuted,
-    marginTop: 6,
+  successTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 6,
+  },
+  successSubtitle: {
+    fontSize: 13,
+    color: '#94A3B8',
+    marginBottom: 8,
+  },
+  successHint: {
+    fontSize: 13,
+    color: '#34D399',
+    fontWeight: '600',
+  },
+  // Web success backdrop
+  successBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successCard: {
+    backgroundColor: '#0C2340',
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
 });

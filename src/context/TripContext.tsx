@@ -9,8 +9,12 @@ import { triggerPushNotification, registerNotificationClickListener } from '../u
 import {
   fetchTripsFromSupabase,
   subscribeToTripsRealtime,
+  acceptTripInSupabase,
+  declineTripInSupabase,
   updateTripStatusInSupabase,
+  requestTripInSupabase,
 } from '../services/supabaseService';
+import { useWallet } from './WalletContext';
 
 interface TripContextType {
   trips: Trip[];
@@ -19,6 +23,8 @@ interface TripContextType {
   selectedTripForDetails: Trip | null;
   completedTripForModal: Trip | null;
   incomingAlertTrip: Trip | null;
+  isAcceptingIncoming: boolean;
+  unavailableTripError: string | null;
   availableTrips: Trip[];
   requestedTrips: Trip[];
   assignedTrips: Trip[];
@@ -26,8 +32,8 @@ interface TripContextType {
   requestTrip: (tripId: string) => void;
   simulateAdminAssignment: (tripId?: string) => void;
   createNewTrip: (customTrip?: Partial<Trip>) => Trip;
-  acceptTrip: (tripId: string) => void;
-  rejectTrip: (tripId: string) => void;
+  acceptTrip: (tripId: string) => Promise<boolean>;
+  rejectTrip: (tripId: string, reason?: "EXPIRED" | "DECLINED") => void;
   advanceTripStatus: (
     tripId: string,
     nextStatus: TripStatus,
@@ -52,8 +58,26 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
   const [selectedTripForDetails, setSelectedTripForDetails] = useState<Trip | null>(null);
   const [completedTripForModal, setCompletedTripForModal] = useState<Trip | null>(null);
   const [incomingAlertTrip, setIncomingAlertTrip] = useState<Trip | null>(null);
+  const [isAcceptingIncoming, setIsAcceptingIncoming] = useState(false);
+  const [unavailableTripError, setUnavailableTripError] = useState<string | null>(null);
+  const tripQueueRef = useRef<Trip[]>([]);
+
+  const showNextQueuedTrip = () => {
+    setUnavailableTripError(null);
+    setIsAcceptingIncoming(false);
+    while (tripQueueRef.current.length > 0) {
+      const next = tripQueueRef.current.shift();
+      if (next && (next.status === "AVAILABLE" || next.status === "ASSIGNED")) {
+        setIncomingAlertTrip(next);
+        return;
+      }
+    }
+    setIncomingAlertTrip(null);
+  };
+
   const { showToast } = useNotifications();
   const { driver, isVerified } = useAuth();
+  const { refreshWallet, recordCompletedTrip } = useWallet();
   const driverRef = useRef(driver);
   // Strict deduplication tracker: guarantees exactly ONE notification per trip!
   const notifiedTripIdsRef = useRef<Set<string>>(new Set());
@@ -62,13 +86,13 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
     driverRef.current = driver;
   }, [driver]);
 
-  // Automatically register for Expo Push Token whenever driver is authenticated/online
+  // Automatically register for Expo Push Token whenever driver is authenticated
   useEffect(() => {
-    if (driver?.id && driver?.online_status === 'ONLINE') {
+    if (driver?.id) {
       const { registerForRemotePushNotificationsAsync } = require('../utils/pushNotifications');
       registerForRemotePushNotificationsAsync(driver.id).catch(() => {});
     }
-  }, [driver?.id, driver?.online_status]);
+  }, [driver?.id]);
 
   const availableTrips = trips.filter((t) => t.status === 'AVAILABLE');
   const requestedTrips = trips.filter((t) => t.status === 'REQUESTED');
@@ -119,17 +143,12 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
       if (nextAppState === 'active') {
         const curDriver = driverRef.current;
         if (curDriver?.online_status === 'ONLINE') {
+          // Silently sync latest trips data into state without popping fake alerts on open
           fetchTripsFromSupabase().then((latestTrips) => {
             if (latestTrips && latestTrips.length > 0) {
               setTrips(latestTrips);
-              const pendingTrip = latestTrips.find(
-                (t) =>
-                  (t.status === 'AVAILABLE' || t.status === 'ASSIGNED') &&
-                  (!t.assigned_driver_id || t.assigned_driver_id === curDriver.id)
-              );
-              if (pendingTrip) {
-                setIncomingAlertTrip((existing) => existing || pendingTrip);
-              }
+              // Ensure all currently fetched trips are marked as seen
+              latestTrips.forEach((t) => notifiedTripIdsRef.current.add(t.id));
             }
           });
         }
@@ -181,15 +200,15 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
 
         // ── ONLINE / OFFLINE & ASSIGNMENT LOGIC ─────────────────────────────
         const curDriver = driverRef.current;
-        const isOnline = curDriver?.online_status === 'ONLINE';
+        const isOnline = (curDriver?.online_status || '').toString().toUpperCase() === 'ONLINE';
         const isDirectlyAssignedToMe = Boolean(
           newTrip.assigned_driver_id &&
           curDriver?.id &&
-          newTrip.assigned_driver_id === curDriver.id
+          newTrip.assigned_driver_id.toString().trim() === curDriver.id.toString().trim()
         );
 
         // If trip is explicitly assigned to a DIFFERENT driver, skip alert
-        if (newTrip.assigned_driver_id && curDriver?.id && newTrip.assigned_driver_id !== curDriver.id) {
+        if (newTrip.assigned_driver_id && curDriver?.id && newTrip.assigned_driver_id.toString().trim() !== curDriver.id.toString().trim()) {
           console.log('Trip assigned to different driver, skipping alert.');
           return;
         }
@@ -222,13 +241,18 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
 
         // 3. Trigger Native / OS Push Notification
         triggerPushNotification(
-          isDirectlyAssignedToMe ? '🚨 Trip Assigned to You! - PickMi' : '🚨 New Trip Received! - PickMi Driver',
-          `Trip ${newTrip.trip_number} (₹${newTrip.fare})\nFrom: ${pickupShort}\nTo: ${dropShort}`,
-          { tripId: newTrip.id, fare: newTrip.fare }
+          "🚕 New Trip Request",
+          `Pickup: ${pickupShort}\nDrop: ${dropShort}\n₹${Number(newTrip.fare).toLocaleString("en-IN")}\nTap to view trip`,
+          { tripId: newTrip.id, type: "incoming_trip_request" }
         );
 
-        // 4. Mount prominent Incoming Trip Alert Card Modal
-        setIncomingAlertTrip(newTrip);
+        // 4. Mount prominent Incoming Trip Alert Card Modal or Queue
+        if (incomingAlertTrip) {
+          console.log("Incoming modal already active, queueing trip:", newTrip.id);
+          tripQueueRef.current.push(newTrip);
+        } else {
+          setIncomingAlertTrip(newTrip);
+        }
       } else if (payload.eventType === 'UPDATE' && payload.new) {
         const raw = payload.new;
         setTrips((prev) =>
@@ -251,7 +275,11 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
 
         if (raw.status === 'ASSIGNED') {
           const curDriver = driverRef.current;
-          const isAssignedToMe = Boolean(raw.assigned_driver_id && curDriver?.id && raw.assigned_driver_id === curDriver.id);
+          const isAssignedToMe = Boolean(
+            raw.assigned_driver_id &&
+            curDriver?.id &&
+            raw.assigned_driver_id.toString().trim() === curDriver.id.toString().trim()
+          );
           const assignmentKey = `assigned_${raw.id}_${raw.assigned_driver_id}`;
 
           if (isAssignedToMe && !notifiedTripIdsRef.current.has(assignmentKey)) {
@@ -317,14 +345,14 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
             'system',
             raw.id
           );
-          setIncomingAlertTrip((current) => (current?.id === raw.id ? null : current));
+          setIncomingAlertTrip((current: Trip | null) => (current?.id === raw.id ? null : current));
         }
       } else if (payload.eventType === 'DELETE') {
         const deletedId = payload.old?.id;
         if (deletedId) {
           console.log('🗑️ Realtime: Trip deleted from Admin:', deletedId);
           setTrips((prev) => prev.filter((t) => t.id !== deletedId));
-          setIncomingAlertTrip((current) => (current?.id === deletedId ? null : current));
+          setIncomingAlertTrip((current: Trip | null) => (current?.id === deletedId ? null : current));
           setSelectedTripForDetails((current) => (current?.id === deletedId ? null : current));
         }
       }
@@ -356,18 +384,19 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
       })
     );
 
-    const targetedTrip = trips.find((t) => t.id === tripId);
+    // Persist trip request to Supabase so Admin panel sees the requested driver
+    if (driver?.id) {
+      requestTripInSupabase(tripId, driver.id).catch((e) =>
+        console.warn('requestTripInSupabase error:', e)
+      );
+    }
+
     showToast(
       'Trip Request Sent',
-      'Your request has been sent. You will be notified when the trip is assigned to you.',
+      'Your request has been sent to Admin Dispatch. The trip will be assigned once Admin approves.',
       'trip_available',
       tripId
     );
-
-    // Auto simulate admin assignment after 4 seconds for a seamless prototype demonstration!
-    setTimeout(() => {
-      simulateAdminAssignment(tripId);
-    }, 4000);
   };
 
   const simulateAdminAssignment = (tripId?: string) => {
@@ -501,56 +530,102 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
     return newTrip;
   };
 
-  const acceptTrip = (tripId: string) => {
+    const acceptTrip = async (tripId: string): Promise<boolean> => {
     if (!isVerified) {
       showToast(
-        'Verification Required',
-        'Your documents are under review. You can accept trips once verified by Admin.',
-        'system'
+        "Verification Required",
+        "Your documents are under review. You can accept trips once verified by Admin.",
+        "system"
       );
-      return;
+      return false;
     }
 
-    setIncomingAlertTrip(null);
-    setTrips((prev) =>
-      prev.map((t) => {
-        if (t.id === tripId) {
-          // Immediately transitions to ON_THE_WAY as per active trip Step 1
-          return { ...t, status: 'ON_THE_WAY' };
-        }
-        return t;
-      })
-    );
+    const curDriver = driverRef.current;
+    if (!curDriver?.id) return false;
 
-    // Sync to Supabase in background
-    updateTripStatusInSupabase(tripId, 'ON_THE_WAY').catch((e) =>
-      console.warn('Supabase acceptTrip sync error:', e)
-    );
+    setIsAcceptingIncoming(true);
+    setUnavailableTripError(null);
 
-    showToast(
-      'Trip Accepted',
-      'You are now on the way to pickup location.',
-      'trip_assigned',
-      tripId
-    );
+    try {
+      const result = await acceptTripInSupabase(tripId, curDriver.id);
+
+      if (result.success) {
+        setTrips((prev) =>
+          prev.map((t) => {
+            if (t.id === tripId) {
+              return { ...t, status: "ON_THE_WAY", assigned_driver_id: curDriver.id };
+            }
+            return t;
+          })
+        );
+
+        tripQueueRef.current = [];
+        setIncomingAlertTrip(null);
+        setIsAcceptingIncoming(false);
+
+        // 🚕 Uber-style Trip Accepted Notification
+        triggerPushNotification(
+          "✅ Trip Accepted",
+          "Your trip details are ready."
+        );
+
+        showToast(
+          "Trip Accepted",
+          "You are now on the way to pickup location.",
+          "trip_assigned",
+          tripId
+        );
+        return true;
+      } else if (result.reason === "ALREADY_TAKEN") {
+        setIsAcceptingIncoming(false);
+        setUnavailableTripError("Trip no longer available");
+        showToast(
+          "Trip no longer available",
+          "Another driver has accepted this trip.",
+          "system"
+        );
+        setTimeout(() => {
+          showNextQueuedTrip();
+        }, 1500);
+        return false;
+      } else {
+        setIsAcceptingIncoming(false);
+        setUnavailableTripError("Unable to accept trip. Please try again.");
+        setTimeout(() => {
+          showNextQueuedTrip();
+        }, 1500);
+        return false;
+      }
+    } catch (err) {
+      setIsAcceptingIncoming(false);
+      console.warn("acceptTrip error:", err);
+      return false;
+    }
   };
 
-  const rejectTrip = (tripId: string) => {
-    setIncomingAlertTrip(null);
-    setTrips((prev) =>
-      prev.map((t) => {
-        if (t.id === tripId) {
-          return { ...t, status: 'AVAILABLE' };
-        }
-        return t;
-      })
-    );
+    const rejectTrip = (tripId: string, reason?: "EXPIRED" | "DECLINED") => {
+    const curDriver = driverRef.current;
+    if (curDriver?.id) {
+      declineTripInSupabase(tripId, curDriver.id).catch(() => {});
+    }
 
-    showToast(
-      'Trip Declined',
-      'The trip has been returned to the available pool.',
-      'system'
-    );
+    notifiedTripIdsRef.current.add(tripId);
+
+    if (reason === "EXPIRED") {
+      showToast(
+        "Trip Request Expired",
+        "The trip request timed out and was returned to pool.",
+        "system"
+      );
+    } else {
+      showToast(
+        "Trip Declined",
+        "Continuing to search for other eligible trips...",
+        "system"
+      );
+    }
+
+    showNextQueuedTrip();
   };
 
   const advanceTripStatus = (
@@ -573,7 +648,7 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
             ...t,
             status: nextStatus,
             ...(extraData || {}),
-            completed_at: nextStatus === 'COMPLETED' ? new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : t.completed_at,
+            completed_at: nextStatus === 'COMPLETED' ? new Date().toISOString() : t.completed_at,
           };
           if (nextStatus === 'COMPLETED') {
             completedTrip = updated;
@@ -597,15 +672,18 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
       const trip = trips.find((t) => t.id === tripId);
       if (trip) {
         const finalEarnedFare = extraData?.total_fare ?? trip.fare;
-        // Driver collects cash directly from customer — no wallet credit
-        setCompletedTripForModal({
+        const compTrip: Trip = {
           ...trip,
           ...(extraData || {}),
           status: 'COMPLETED',
           fare: finalEarnedFare,
           total_fare: finalEarnedFare,
-          completed_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        });
+          completed_at: new Date().toISOString(),
+        };
+        setCompletedTripForModal(compTrip);
+        // Immediately record in dynamic wallet for 0ms UI reflection
+        recordCompletedTrip(compTrip);
+        refreshWallet().catch(() => {});
         showToast('Trip Completed', `Trip ${trip.trip_number} completed: ₹${finalEarnedFare.toLocaleString('en-IN')}`, 'trip_completed', tripId);
       }
     }
@@ -630,6 +708,8 @@ export const TripProvider = ({ children }: { children: ReactNode }) => {
         selectedTripForDetails,
         completedTripForModal,
         incomingAlertTrip,
+        isAcceptingIncoming,
+        unavailableTripError,
         availableTrips,
         requestedTrips,
         assignedTrips,
