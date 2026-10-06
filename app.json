@@ -1,9 +1,8 @@
 {
   "expo": {
     "name": "Pickmi Driver",
-    "slug": "pickmi-driver",
-    "owner": "karthik761346",
-    "version": "1.0.0",
+    "slug": "MobileApp",
+    "version": "1.0.16",
     "orientation": "portrait",
     "icon": "./assets/driver_icon.png",
     "scheme": "pickmidriver",
@@ -23,6 +22,7 @@
     },
     "android": {
       "package": "com.pickmi.driver",
+      "versionCode": 17,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#0043DC",
@@ -31,6 +31,7 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
         "POST_NOTIFICATIONS",
         "VIBRATE",
         "WAKE_LOCK",
@@ -71,6 +72,15 @@
           "color": "#0043DC",
           "sounds": []
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Pickmi Driver collects location data to enable real-time trip matching, pickup dispatching, turn-by-turn navigation, and driver safety even when the app is closed or not in use.",
+          "locationAlwaysPermission": "Pickmi Driver collects location data to enable real-time trip matching, pickup dispatching, turn-by-turn navigation, and driver safety even when the app is closed or not in use.",
+          "locationWhenInUsePermission": "Pickmi Driver collects location data to enable real-time trip matching, pickup dispatching, and turn-by-turn navigation.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
       ]
     ],
     "web": {
@@ -80,10 +90,11 @@
     "newArchEnabled": false,
     "extra": {
       "eas": {
-        "projectId": "13fe6dc0-ca34-419b-9d8c-de3b788bdcb0"
+        "projectId": "4ecc15ea-142d-4f0b-a354-66c2cbb829d3"
       },
       "supabaseUrl": "https://awwrbgwpzgtbunrvsmyu.supabase.co",
       "supabaseAnonKey": "sb_publishable_MVv7fXTjS6R79oXLOHuCLA_ij0lDSRE"
-    }
+    },
+    "sdkVersion": "51.0.0"
   }
 }

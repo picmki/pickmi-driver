@@ -64,10 +64,24 @@ export async function sendOtpVia2Factor(
     };
   }
 
+  // Google Play Reviewer & Test Phone Numbers
+  const TEST_PHONE_NUMBERS = ['9999999999', '9876543210', '8888888888', '9999999990'];
+  if (TEST_PHONE_NUMBERS.includes(phone)) {
+    console.log(`[2Factor] Test account detected (${phone}). Using fixed OTP 123456.`);
+    activeSessionId = `test_session_${phone}_${Date.now()}`;
+    await AsyncStorage.setItem(SESSION_STORAGE_KEY, activeSessionId).catch(() => {});
+    return {
+      success: true,
+      sessionId: activeSessionId,
+      message: 'Test Account Mode: Use OTP 123456',
+    };
+  }
+
   // If 2Factor API key is not configured, fall back to simulated OTP
   if (!isTwoFactorConfigured()) {
     console.log('[2Factor] No API key configured. Using local simulated mode (Code: 123456).');
     activeSessionId = `sim_session_${Date.now()}`;
+    await AsyncStorage.setItem(SESSION_STORAGE_KEY, activeSessionId).catch(() => {});
     return {
       success: true,
       sessionId: activeSessionId,
@@ -129,6 +143,22 @@ export async function verifyOtpVia2Factor(
   }
   const trimmedOtp = enteredOtp.trim();
 
+  // Test OTP verification bypass for Google Play Reviewers & Demo sessions
+  if (
+    trimmedOtp === '123456' &&
+    (currentSession?.startsWith('test_session_') ||
+      currentSession?.startsWith('sim_session_') ||
+      !isTwoFactorConfigured())
+  ) {
+    console.log('[2Factor] Test OTP 123456 accepted successfully.');
+    activeSessionId = null;
+    await AsyncStorage.removeItem(SESSION_STORAGE_KEY).catch(() => {});
+    return {
+      success: true,
+      message: 'Mobile number verified successfully!',
+    };
+  }
+
   if (!isTwoFactorConfigured()) {
     return {
       success: false,
@@ -136,7 +166,7 @@ export async function verifyOtpVia2Factor(
     };
   }
 
-  if (!currentSession || currentSession.startsWith('sim_session_')) {
+  if (!currentSession) {
     return {
       success: false,
       message: 'No active OTP session found. Please request a new OTP.',

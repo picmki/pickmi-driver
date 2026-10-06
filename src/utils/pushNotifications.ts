@@ -283,7 +283,7 @@ export async function registerForRemotePushNotificationsAsync(driverId?: string)
       Constants.easConfig?.projectId ||
       (Constants.expoConfig?.extra as any)?.eas?.projectId ||
       (Constants.expoConfig?.extra as any)?.projectId ||
-      '13fe6dc0-ca34-419b-9d8c-de3b788bdcb0';
+      '4ecc15ea-142d-4f0b-a354-66c2cbb829d3';
 
     // ⚠️ CRITICAL: Expo Go SDK 53+ removed remote Android push notifications from Expo Go.
     // Calling getExpoPushTokenAsync inside Expo Go throws an explicit runtime exception.

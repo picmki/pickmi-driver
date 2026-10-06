@@ -279,8 +279,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         const cleanedPending = pendingMobile.replace(/\s+/g, '');
         const cleanedStored = parsedDriver?.mobile?.replace(/\s+/g, '');
+        const cleanedPendingDigits = pendingMobile.replace(/[^0-9]/g, '');
+        const isTestAccount = ['9999999999', '9876543210', '8888888888', '9999999990'].some((num) =>
+          cleanedPendingDigits.endsWith(num)
+        );
 
-        if (parsedDriver && profileDone && cleanedStored && cleanedStored === cleanedPending) {
+        if (isTestAccount) {
+          console.log('[AuthContext] Google Play / Test Account detected. Loading full active driver profile.');
+          const testDriver: Driver = {
+            ...INITIAL_DRIVER,
+            mobile: pendingMobile,
+            deposit_status: 'PAID',
+            status: 'active',
+          };
+          setDriver(testDriver);
+          setVehicle(INITIAL_VEHICLE);
+          setIsNewUser(false);
+          await AsyncStorage.setItem(STORAGE_KEY_PROFILE_DONE, 'true');
+          await AsyncStorage.setItem(STORAGE_KEY_DRIVER, JSON.stringify(testDriver));
+          await AsyncStorage.setItem(STORAGE_KEY_VEHICLE, JSON.stringify(INITIAL_VEHICLE));
+        } else if (parsedDriver && profileDone && cleanedStored && cleanedStored === cleanedPending) {
           setDriver(parsedDriver);
           setIsNewUser(false);
         } else {

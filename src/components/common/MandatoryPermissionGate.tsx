@@ -5,7 +5,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
+  ScrollView,
+  Linking,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Shadows } from '../../theme/colors';
@@ -21,6 +25,7 @@ export const MandatoryPermissionGate: React.FC = () => {
   } = usePermission();
 
   const [isRequesting, setIsRequesting] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   if (isLoading || !isBlocked) {
     return null;
@@ -35,119 +40,175 @@ export const MandatoryPermissionGate: React.FC = () => {
     }
   };
 
+  const handleDeny = () => {
+    Alert.alert(
+      'Location Permission Required',
+      'Pickmi Driver requires Location permissions to dispatch nearby trips and track routes. Without location access, you cannot receive ride requests. You can grant permissions at any time.',
+      [{ text: 'I Understand', style: 'cancel' }]
+    );
+  };
+
+  const openPrivacyPolicyWeb = async () => {
+    const url = 'https://www.pickmicabs.com/privacy-policy.html';
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        setShowPrivacyModal(true);
+      }
+    } catch {
+      setShowPrivacyModal(true);
+    }
+  };
+
   return (
     <View style={styles.blockOverlay}>
-      <View style={styles.container}>
-        {/* Shield / Lock Icon */}
-        <View style={styles.iconCircle}>
-          <View style={styles.iconPulseRing} />
-          <Ionicons name="shield-half" size={44} color={Colors.primary} />
-        </View>
-
-        {/* Title */}
-        <Text style={styles.title}>Permissions Required to Drive</Text>
-
-        {/* Mandate Notice */}
-        <View style={styles.alertBanner}>
-          <Ionicons name="alert-circle" size={18} color={Colors.danger} />
-          <Text style={styles.alertBannerText}>
-            First allow required permissions, then utilize the app. App access is currently blocked.
-          </Text>
-        </View>
-
-        <Text style={styles.description}>
-          PickMi Driver requires mandatory real-time Location and Notification permissions to dispatch trips, calculate routes, and deliver audible ride alerts.
-        </Text>
-
-        {/* Permission Item 1: Location */}
-        <View style={[styles.permCard, Shadows.sm]}>
-          <View style={styles.permIconBox}>
-            <Ionicons name="location" size={24} color={Colors.primary} />
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        <View style={styles.container}>
+          {/* Shield / Lock Icon */}
+          <View style={styles.iconCircle}>
+            <View style={styles.iconPulseRing} />
+            <Ionicons name="location" size={40} color={Colors.primary} />
           </View>
-          <View style={styles.permContent}>
-            <View style={styles.permHeaderRow}>
-              <Text style={styles.permTitle}>Live Location & GPS</Text>
-              <View
-                style={[
-                  styles.statusBadge,
-                  hasLocationPermission ? styles.statusBadgeActive : styles.statusBadgeRequired,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusBadgeText,
-                    hasLocationPermission
-                      ? styles.statusBadgeTextActive
-                      : styles.statusBadgeTextRequired,
-                  ]}
-                >
+
+          {/* Main Title */}
+          <Text style={styles.title}>Prominent Location Disclosure</Text>
+          <Text style={styles.subtitle}>Driver Partner Data & Permission Consent</Text>
+
+          {/* Mandatory Google Play Background Location Disclosure Banner */}
+          <View style={styles.prominentDisclosureBox}>
+            <View style={styles.disclosureHeaderRow}>
+              <Ionicons name="navigate-circle" size={24} color="#1E40AF" />
+              <Text style={styles.disclosureTitle}>Background Location Collection</Text>
+            </View>
+            <Text style={styles.disclosureBodyText}>
+              <Text style={styles.boldText}>Pickmi Driver collects location data</Text> (precise GPS coordinates) to enable real-time trip matching, pickup dispatching, turn-by-turn navigation, fare calculation, and rider safety{' '}
+              <Text style={styles.highlightText}>EVEN WHEN THE APP IS CLOSED OR NOT IN USE.</Text>
+            </Text>
+          </View>
+
+          {/* Functional Purpose Breakdown */}
+          <View style={styles.purposesContainer}>
+            <Text style={styles.sectionHeader}>Why Pickmi Needs Location Data:</Text>
+
+            <View style={styles.purposeItem}>
+              <Ionicons name="car-sport" size={20} color={Colors.primary} style={styles.purposeIcon} />
+              <View style={styles.purposeTextGroup}>
+                <Text style={styles.purposeTitle}>Trip Dispatching & Matching</Text>
+                <Text style={styles.purposeDesc}>
+                  Matches you with nearby rider requests continuous when your status is ONLINE, even if the app is in the background or screen is off.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.purposeItem}>
+              <Ionicons name="map" size={20} color={Colors.primary} style={styles.purposeIcon} />
+              <View style={styles.purposeTextGroup}>
+                <Text style={styles.purposeTitle}>Turn-by-Turn Navigation</Text>
+                <Text style={styles.purposeDesc}>
+                  Guides you to passenger pickup points and destination drop-offs accurately.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.purposeItem}>
+              <Ionicons name="shield-checkmark" size={20} color={Colors.primary} style={styles.purposeIcon} />
+              <View style={styles.purposeTextGroup}>
+                <Text style={styles.purposeTitle}>Rider & Driver Safety Tracking</Text>
+                <Text style={styles.purposeDesc}>
+                  Shares real-time trip status with passengers and emergency services for safety monitoring during active rides.
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Status Indicators for Required Permissions */}
+          <View style={styles.permCardsContainer}>
+            {/* Location */}
+            <View style={[styles.permCard, Shadows.sm]}>
+              <Ionicons name="location" size={22} color={Colors.primary} />
+              <View style={styles.permCardContent}>
+                <Text style={styles.permCardTitle}>Location Services (Foreground & Background)</Text>
+                <Text style={styles.permCardSubtitle}>Required for trip dispatching & live tracking</Text>
+              </View>
+              <View style={[styles.badge, hasLocationPermission ? styles.badgeActive : styles.badgeRequired]}>
+                <Text style={[styles.badgeText, hasLocationPermission ? styles.badgeTextActive : styles.badgeTextRequired]}>
                   {hasLocationPermission ? 'Active' : 'Required'}
                 </Text>
               </View>
             </View>
-            <Text style={styles.permSubtitle}>
-              Essential for pickup dispatch, live turn navigation, and rider safety.
-            </Text>
-          </View>
-        </View>
 
-        {/* Permission Item 2: Notification */}
-        <View style={[styles.permCard, Shadows.sm]}>
-          <View style={styles.permIconBox}>
-            <Ionicons name="notifications" size={24} color={Colors.primary} />
-          </View>
-          <View style={styles.permContent}>
-            <View style={styles.permHeaderRow}>
-              <Text style={styles.permTitle}>Trip Notifications</Text>
-              <View
-                style={[
-                  styles.statusBadge,
-                  hasNotificationPermission ? styles.statusBadgeActive : styles.statusBadgeRequired,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusBadgeText,
-                    hasNotificationPermission
-                      ? styles.statusBadgeTextActive
-                      : styles.statusBadgeTextRequired,
-                  ]}
-                >
+            {/* Notifications */}
+            <View style={[styles.permCard, Shadows.sm]}>
+              <Ionicons name="notifications" size={22} color={Colors.primary} />
+              <View style={styles.permCardContent}>
+                <Text style={styles.permCardTitle}>Push & Sound Notifications</Text>
+                <Text style={styles.permCardSubtitle}>Required for audible ride alerts & instant trip requests</Text>
+              </View>
+              <View style={[styles.badge, hasNotificationPermission ? styles.badgeActive : styles.badgeRequired]}>
+                <Text style={[styles.badgeText, hasNotificationPermission ? styles.badgeTextActive : styles.badgeTextRequired]}>
                   {hasNotificationPermission ? 'Active' : 'Required'}
                 </Text>
               </View>
             </View>
-            <Text style={styles.permSubtitle}>
-              Required for instant incoming ride request sound alerts & trip assignments.
-            </Text>
+          </View>
+
+          {/* Privacy Policy Link */}
+          <TouchableOpacity style={styles.privacyLinkBtn} onPress={openPrivacyPolicyWeb} activeOpacity={0.7}>
+            <Ionicons name="document-text-outline" size={16} color={Colors.primary} />
+            <Text style={styles.privacyLinkText}>Read Full Privacy Policy</Text>
+            <Ionicons name="open-outline" size={14} color={Colors.primary} />
+          </TouchableOpacity>
+
+          {/* Action Buttons */}
+          <View style={styles.actionButtonsCol}>
+            <TouchableOpacity
+              style={styles.agreeBtn}
+              onPress={handleGrant}
+              disabled={isRequesting}
+              activeOpacity={0.85}
+            >
+              {isRequesting ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={22} color={Colors.white} />
+                  <Text style={styles.agreeBtnText}>Agree & Turn On Permissions</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.denyBtn} onPress={handleDeny} activeOpacity={0.7}>
+              <Text style={styles.denyBtnText}>Deny / Not Now</Text>
+            </TouchableOpacity>
           </View>
         </View>
+      </ScrollView>
 
-        {/* Explanatory Policy Footnote */}
-        <View style={styles.policyRow}>
-          <Ionicons name="lock-closed-outline" size={14} color={Colors.textMuted} />
-          <Text style={styles.policyText}>
-            Permissions are always encrypted and strictly used during active driving shifts.
-          </Text>
+      {/* Fallback In-App Privacy Policy Modal */}
+      <Modal visible={showPrivacyModal} animationType="slide" transparent={false} onRequestClose={() => setShowPrivacyModal(false)}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalHeaderTitle}>Pickmi Privacy Policy</Text>
+          <TouchableOpacity onPress={() => setShowPrivacyModal(false)} style={styles.modalCloseBtn}>
+            <Ionicons name="close" size={24} color={Colors.textPrimary} />
+          </TouchableOpacity>
         </View>
-
-        {/* Primary Action Button */}
-        <TouchableOpacity
-          style={styles.actionBtn}
-          onPress={handleGrant}
-          disabled={isRequesting}
-          activeOpacity={0.85}
-        >
-          {isRequesting ? (
-            <ActivityIndicator size="small" color={Colors.white} />
-          ) : (
-            <>
-              <Ionicons name="checkmark-done-circle" size={20} color={Colors.white} />
-              <Text style={styles.actionBtnText}>Allow Permissions & Start Driving</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
+        <ScrollView style={styles.modalBody}>
+          <Text style={styles.modalH1}>Location Data Collection & Usage Policy</Text>
+          <Text style={styles.modalP}>
+            Pickmi Driver collects precise location data (GPS & network) to enable real-time trip dispatching, fare calculation, route navigation, and driver/passenger safety monitoring EVEN WHEN THE APP IS CLOSED OR NOT IN USE.
+          </Text>
+          <Text style={styles.modalH2}>1. Foreground & Background GPS Access</Text>
+          <Text style={styles.modalP}>
+            When online, background location access allows the server to send nearby trip alerts to your device while navigating or with screen off. Location collection stops immediately when driver switches to OFFLINE status.
+          </Text>
+          <Text style={styles.modalH2}>2. Data Privacy & Security</Text>
+          <Text style={styles.modalP}>
+            Your location data is encrypted during transmission and never sold or rented to third parties.
+          </Text>
+        </ScrollView>
+      </Modal>
     </View>
   );
 };
@@ -159,145 +220,202 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.96)',
+    backgroundColor: 'rgba(15, 23, 42, 0.98)',
     zIndex: 99999,
+  },
+  scrollContainer: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    paddingVertical: 36,
+    paddingHorizontal: 20,
   },
   container: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 440,
     backgroundColor: Colors.white,
     borderRadius: 24,
-    padding: 24,
+    padding: 22,
     alignItems: 'center',
+    ...Shadows.lg,
   },
   iconCircle: {
     position: 'relative',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   iconPulseRing: {
     position: 'absolute',
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     borderWidth: 2,
     borderColor: 'rgba(0, 67, 220, 0.25)',
   },
   title: {
-    fontSize: 20,
+    fontSize: 21,
     fontWeight: '800',
     color: Colors.textPrimary,
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 4,
     letterSpacing: -0.3,
   },
-  alertBanner: {
+  subtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  prominentDisclosureBox: {
+    width: '100%',
+    backgroundColor: '#EFF6FF',
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.primary,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  disclosureHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.dangerLight,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    marginBottom: 12,
     gap: 8,
+    marginBottom: 6,
   },
-  alertBannerText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.dangerDark,
-    lineHeight: 16,
+  disclosureTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1E40AF',
   },
-  description: {
+  disclosureBodyText: {
     fontSize: 13,
-    color: Colors.textSecondary,
-    textAlign: 'center',
+    color: '#1E293B',
     lineHeight: 19,
-    marginBottom: 18,
   },
-  permCard: {
+  boldText: {
+    fontWeight: '700',
+  },
+  highlightText: {
+    fontWeight: '800',
+    color: '#0043DC',
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  purposesContainer: {
     width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     backgroundColor: Colors.background,
     borderRadius: 14,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    gap: 12,
   },
-  permIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  permContent: {
-    flex: 1,
-  },
-  permHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  permTitle: {
-    fontSize: 14,
+  sectionHeader: {
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.textPrimary,
+    marginBottom: 10,
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+  purposeItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
   },
-  statusBadgeActive: {
-    backgroundColor: Colors.primaryLight,
+  purposeIcon: {
+    marginTop: 2,
   },
-  statusBadgeRequired: {
-    backgroundColor: '#FFECCC',
+  purposeTextGroup: {
+    flex: 1,
   },
-  statusBadgeText: {
-    fontSize: 11,
+  purposeTitle: {
+    fontSize: 13,
     fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 2,
   },
-  statusBadgeTextActive: {
-    color: Colors.primary,
-  },
-  statusBadgeTextRequired: {
-    color: '#B45309',
-  },
-  permSubtitle: {
+  purposeDesc: {
     fontSize: 12,
     color: Colors.textSecondary,
     lineHeight: 16,
   },
-  policyRow: {
+  permCardsContainer: {
+    width: '100%',
+    gap: 10,
+    marginBottom: 16,
+  },
+  permCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 10,
+  },
+  permCardContent: {
+    flex: 1,
+  },
+  permCardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  permCardSubtitle: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  badgeActive: {
+    backgroundColor: Colors.primaryLight,
+  },
+  badgeRequired: {
+    backgroundColor: '#FFECCC',
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  badgeTextActive: {
+    color: Colors.primary,
+  },
+  badgeTextRequired: {
+    color: '#B45309',
+  },
+  privacyLinkBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 6,
-    marginBottom: 18,
-    paddingHorizontal: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 16,
   },
-  policyText: {
-    flex: 1,
-    fontSize: 11,
-    color: Colors.textMuted,
-    lineHeight: 15,
+  privacyLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.primary,
+    textDecorationLine: 'underline',
   },
-  actionBtn: {
+  actionButtonsCol: {
+    width: '100%',
+    gap: 10,
+  },
+  agreeBtn: {
     width: '100%',
     height: 50,
     backgroundColor: Colors.primary,
@@ -308,9 +426,64 @@ const styles = StyleSheet.create({
     gap: 8,
     ...Shadows.md,
   },
-  actionBtnText: {
+  agreeBtnText: {
     fontSize: 15,
     fontWeight: '700',
     color: Colors.white,
+  },
+  denyBtn: {
+    width: '100%',
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  denyBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    paddingTop: Platform.OS === 'ios' ? 50 : 16,
+  },
+  modalHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  modalCloseBtn: {
+    padding: 6,
+  },
+  modalBody: {
+    flex: 1,
+    padding: 20,
+  },
+  modalH1: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    marginBottom: 12,
+  },
+  modalH2: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.primary,
+    marginTop: 18,
+    marginBottom: 8,
+  },
+  modalP: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+    marginBottom: 12,
   },
 });

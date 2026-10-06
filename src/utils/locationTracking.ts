@@ -8,9 +8,9 @@ export async function syncDriverLocationToSupabase(
   driverId: string
 ): Promise<{ success: boolean; lat?: number; lng?: number; city?: string }> {
   try {
-    const { status } = await Location.requestForegroundPermissionsAsync();
+    const { status } = await Location.getForegroundPermissionsAsync();
     if (status !== 'granted') {
-      console.log('[Location] Permission not granted for driver location tracking');
+      console.log('[Location] Location permission not active yet, skipping sync');
       return { success: false };
     }
 

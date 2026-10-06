@@ -65,10 +65,23 @@ export const PermissionProvider: React.FC<{ children: ReactNode }> = ({ children
     try {
       if (Platform.OS !== 'web') {
         const locRes = await Location.requestForegroundPermissionsAsync();
-        locGranted = locRes.status === 'granted';
+        if (locRes.status === 'granted') {
+          locGranted = true;
+          // Request background location on native platforms after foreground is granted
+          try {
+            const bgRes = await Location.requestBackgroundPermissionsAsync();
+            if (bgRes.status === 'granted') {
+              console.log('[Permissions] Background location granted');
+            } else {
+              console.log('[Permissions] Background location status:', bgRes.status);
+            }
+          } catch (bgErr) {
+            console.warn('[Permissions] Background location request failed:', bgErr);
+          }
+        }
       } else {
         // Web fallback
-        if (navigator.geolocation) {
+        if (typeof window !== 'undefined' && 'navigator' in window && navigator.geolocation) {
           locGranted = true;
         } else {
           locGranted = true;
@@ -82,25 +95,25 @@ export const PermissionProvider: React.FC<{ children: ReactNode }> = ({ children
           }
         }
       }
-    } catch {
+    } catch (err) {
+      console.warn('[Permissions] Error requesting permissions:', err);
       locGranted = true;
       notifGranted = true;
     }
 
-    // Mark both active
-    setHasLocationPermission(true);
-    setHasNotificationPermission(true);
+    setHasLocationPermission(locGranted);
+    setHasNotificationPermission(notifGranted);
 
     try {
       await AsyncStorage.setItem(
         STORAGE_KEY_PERMISSIONS,
-        JSON.stringify({ location: true, notification: true })
+        JSON.stringify({ location: locGranted, notification: notifGranted })
       );
     } catch (e) {
       console.warn('Error saving permissions:', e);
     }
 
-    return true;
+    return locGranted && notifGranted;
   };
 
   const setPermissionsState = async (location: boolean, notification: boolean) => {
